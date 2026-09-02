@@ -1,47 +1,70 @@
 .track-list {
   height: 100%;
   overflow-y: auto;
-  padding: 16px 10px;
+  padding: 12px 8px 14px;
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 120, 90, 0.3) transparent;
+}
+
+.track-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.track-list::-webkit-scrollbar-thumb {
+  background: rgba(180, 120, 90, 0.3);
+  border-radius: 999px;
 }
 
 .track-list-empty {
-  padding: 24px 16px;
-  color: rgba(242, 233, 223, 0.4);
+  padding: 28px 16px;
+  color: rgba(61, 42, 34, 0.45);
   font-size: 13px;
+  text-align: center;
 }
 
 .track-list-album {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
+}
+
+.track-list-album:last-child {
+  margin-bottom: 4px;
 }
 
 .track-list-album-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 12px 8px;
+  padding: 6px 10px 10px;
 }
 
 .track-list-cover {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(40, 30, 20, 0.18);
-  background: #2a2420;
+  box-shadow:
+    0 2px 8px rgba(60, 36, 18, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background: #e8d8cc;
 }
 
 .track-list-cover.placeholder {
-  background: radial-gradient(circle at 50% 50%, #c45c3e 0 28%, #1a1a1c 30% 100%);
+  background: radial-gradient(
+    circle at 50% 45%,
+    #f0c4a8 0 26%,
+    #c45c3e 28% 52%,
+    #8a4a40 54% 100%
+  );
 }
 
 .track-list-album-name {
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: 650;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 176, 138, 0.8);
+  color: #b85a42;
 }
 
 .track-list-item {
@@ -49,30 +72,41 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
-  color: #e8ddd0;
+  color: #3d2a22;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .track-list-item:hover {
-  background: rgba(255, 176, 138, 0.08);
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .track-list-item.active {
-  background: rgba(255, 176, 138, 0.16);
-  color: #ffb08a;
-  font-weight: 550;
+  background: rgba(255, 255, 255, 0.72);
+  color: #a84a30;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(60, 36, 18, 0.06);
 }
 
 .track-list-item-icon {
-  flex: 0 0 16px;
-  font-size: 11px;
-  opacity: 0.8;
+  flex: 0 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #c45c3e;
+  opacity: 0.85;
+}
+
+.track-list-item-icon svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
 }
 
 .track-list-item-title {

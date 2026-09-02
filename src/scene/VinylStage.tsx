@@ -131,7 +131,15 @@ export function VinylStage() {
         shadows="soft"
         dpr={[1, 2]}
         camera={{ position: CAMERA.pos, fov: CAMERA.fov, near: 0.1, far: 30 }}
-        gl={{ antialias: true, alpha: true, toneMappingExposure: 1.14 }}
+        gl={{
+          antialias: true,
+          alpha: true,
+          premultipliedAlpha: true,
+          toneMappingExposure: 1.14,
+        }}
+        onCreated={({ gl }) => {
+          gl.setClearColor(0x000000, 0);
+        }}
       >
         {/* Key from upper-right: arm shadow falls down-left onto the record. */}
         <directionalLight

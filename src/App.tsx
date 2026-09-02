@@ -48,12 +48,12 @@ function App() {
 
   return (
     <div className="app-root">
-      <aside className="app-sidebar">
-        <TrackList />
-      </aside>
       <main className="app-main">
         <VinylStage />
       </main>
+      <aside className="app-sidebar">
+        <TrackList />
+      </aside>
       <ControlPanel onPickFolder={handlePickFolder} />
     </div>
   );

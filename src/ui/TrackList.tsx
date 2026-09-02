@@ -1,7 +1,24 @@
 import { usePlayerStore } from "../store/playerStore";
 import { toAssetUrl } from "../audio/assetUrl";
 
-/** Left-hand sidebar: every album's tracks, grouped, click to play. */
+function IconPlay() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden>
+      <path d="M3.2 1.6v8.8l7.2-4.4z" />
+    </svg>
+  );
+}
+
+function IconPause() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden>
+      <rect x="2.4" y="1.8" width="2.6" height="8.4" rx="0.6" />
+      <rect x="7" y="1.8" width="2.6" height="8.4" rx="0.6" />
+    </svg>
+  );
+}
+
+/** Floating library panel: albums and tracks over the scene. */
 export function TrackList() {
   const albums = usePlayerStore((s) => s.albums);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
@@ -11,7 +28,8 @@ export function TrackList() {
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
 
   const handleClick = (albumIndex: number, trackIndex: number) => {
-    const isCurrent = albumIndex === currentAlbumIndex && trackIndex === currentTrackIndex;
+    const isCurrent =
+      albumIndex === currentAlbumIndex && trackIndex === currentTrackIndex;
     if (isCurrent) {
       setIsPlaying(!isPlaying);
     } else {
@@ -45,7 +63,9 @@ export function TrackList() {
             <div className="track-list-album-name">{album.name}</div>
           </div>
           {album.tracks.map((track, trackIndex) => {
-            const isCurrent = albumIndex === currentAlbumIndex && trackIndex === currentTrackIndex;
+            const isCurrent =
+              albumIndex === currentAlbumIndex &&
+              trackIndex === currentTrackIndex;
             return (
               <button
                 key={track.path}
@@ -53,7 +73,7 @@ export function TrackList() {
                 onClick={() => handleClick(albumIndex, trackIndex)}
               >
                 <span className="track-list-item-icon">
-                  {isCurrent && isPlaying ? "⏸" : "▶"}
+                  {isCurrent && isPlaying ? <IconPause /> : <IconPlay />}
                 </span>
                 <span className="track-list-item-title">{track.title}</span>
               </button>

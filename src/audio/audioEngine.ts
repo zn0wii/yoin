@@ -22,6 +22,7 @@ class AudioEngine {
   constructor() {
     this.audio = new Audio();
     this.audio.preload = "auto";
+    this.audio.volume = 0.8;
     // The asset protocol (convertFileSrc) is served from a different origin
     // than the page (e.g. http://asset.localhost vs https://tauri.localhost on
     // Windows), so the media must be fetched in CORS mode — otherwise it is
@@ -123,6 +124,15 @@ class AudioEngine {
 
   get paused() {
     return this.audio.paused;
+  }
+
+  get volume() {
+    return this.audio.volume;
+  }
+
+  setVolume(value: number) {
+    this.audio.volume = Math.min(1, Math.max(0, value));
+    this.emit();
   }
 
   /** Average amplitude in [0, 1] for the current frame, or 0 if not playing. */
