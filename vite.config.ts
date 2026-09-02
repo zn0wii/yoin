@@ -102,7 +102,8 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      //    and design-reference assets (locked files there crash the watcher)
+      ignored: ["**/src-tauri/**", "assets/**"],
     },
   },
 }));
