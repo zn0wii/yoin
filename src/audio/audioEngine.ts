@@ -22,6 +22,14 @@ class AudioEngine {
   constructor() {
     this.audio = new Audio();
     this.audio.preload = "auto";
+    // The asset protocol (convertFileSrc) is served from a different origin
+    // than the page (e.g. http://asset.localhost vs https://tauri.localhost on
+    // Windows), so the media must be fetched in CORS mode — otherwise it is
+    // treated as tainted and createMediaElementSource feeds silence into the
+    // graph (playback advances but nothing is heard). Tauri's asset protocol
+    // echoes the window origin in Access-Control-Allow-Origin, which is
+    // exactly what anonymous CORS mode needs.
+    this.audio.crossOrigin = "anonymous";
     this.audio.addEventListener("timeupdate", () => this.emit());
     this.audio.addEventListener("loadedmetadata", () => this.emit());
     this.audio.addEventListener("ended", () => {
