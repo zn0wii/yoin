@@ -19,14 +19,14 @@ export type VinylGrooveMaps = {
  *  applied via material.opacity so alpha blending stays reliable with
  *  MeshPhysicalMaterial + clearcoat. Tuned against assets/vinyl.png. */
 const VINYL_STOPS: { t: number; r: number; g: number; b: number }[] = [
-  { t: 0.0, r: 198, g: 148, b: 156 },
-  { t: 0.06, r: 216, g: 150, b: 158 },
-  { t: 0.22, r: 236, g: 176, b: 184 },
-  { t: 0.48, r: 246, g: 202, b: 206 },
-  { t: 0.75, r: 250, g: 224, b: 226 },
-  { t: 0.92, r: 252, g: 238, b: 236 },
-  { t: 0.98, r: 253, g: 244, b: 242 },
-  { t: 1.0, r: 240, g: 210, b: 214 },
+  { t: 0.0, r: 204, g: 118, b: 138 },
+  { t: 0.06, r: 220, g: 122, b: 142 },
+  { t: 0.22, r: 232, g: 136, b: 154 },
+  { t: 0.48, r: 236, g: 150, b: 164 },
+  { t: 0.75, r: 238, g: 168, b: 178 },
+  { t: 0.92, r: 240, g: 186, b: 194 },
+  { t: 0.98, r: 236, g: 178, b: 188 },
+  { t: 1.0, r: 220, g: 150, b: 164 },
 ];
 
 function lerpStops(t: number): { r: number; g: number; b: number } {
@@ -87,8 +87,8 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
   const discPx = size * DISC_R;
   const labelPx = discPx * LABEL_OF_DISC;
   const deadWax = labelPx + size * 0.012;
-  const period = 2.2;
-  const amp = 0.2;
+  const period = 2.0;
+  const amp = 0.28;
 
   const albedo = new Uint8Array(size * size * 4);
   const normal = new Uint8Array(size * size * 4);
@@ -108,7 +108,7 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
     const t = (r - labelPx) / (discPx - labelPx);
     const inDead = r < deadWax ? (deadWax - r) / (deadWax - labelPx) : 0;
     const envelope = (0.5 + 0.5 * Math.pow(t, 0.55)) * (1 - inDead * 0.92);
-    const group = Math.sin(r * 0.42) * 0.16;
+    const group = Math.sin(r * 0.4) * 0.22;
     const lead =
       1 +
       0.28 * (1 - smooth01((r - labelPx) / 22)) +
@@ -156,9 +156,8 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
       // normals + anisotropy, not painted dark rings.
       const wave = grooveWave(r, period);
       const inGroove = r >= labelPx && r <= discPx ? 1 : 0;
-      const lift = wave * 6 * inGroove;
-      // Soft silvering on groove peaks — reads under soft studio light.
-      const silver = Math.max(0, wave) * 14 * inGroove;
+      const lift = wave * 12 * inGroove;
+      const silver = Math.max(0, wave) * 20 * inGroove;
       const rC = Math.min(255, Math.max(0, col.r + lift + silver));
       const gC = Math.min(255, Math.max(0, col.g + lift * 0.75 + silver));
       const bC = Math.min(255, Math.max(0, col.b + lift * 0.8 + silver * 0.95));

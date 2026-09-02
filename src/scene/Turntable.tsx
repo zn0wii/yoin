@@ -26,8 +26,8 @@ export const RECORD_Y = 0.0715;
 /** Label radius — kept in sync with LABEL_OF_DISC in vinylTexture.ts. */
 const LABEL_R = RECORD_R * LABEL_OF_DISC;
 
-const GROOVE_NORMAL_SCALE = new THREE.Vector2(1.1, 1.1);
-const CLEARCOAT_NORMAL_SCALE = new THREE.Vector2(0.45, 0.45);
+const GROOVE_NORMAL_SCALE = new THREE.Vector2(1.5, 1.5);
+const CLEARCOAT_NORMAL_SCALE = new THREE.Vector2(0.6, 0.6);
 
 /** Tangents along concentric grooves so anisotropy + normal maps light correctly. */
 function makeGrooveGeometry(inner: number, outer: number) {
@@ -80,15 +80,46 @@ const stylusMaterial = new THREE.MeshStandardMaterial({
 
 /** Pivot position on the plinth (rear-right), x/z in world space. */
 export const ARM_PIVOT = new THREE.Vector2(1.26, -0.86);
-/** Distance pivot → stylus for the modeled arm; the arm reaches along local −X. */
+/** Distance pivot → headshell mount along local −X. */
 export const ARM_LEN = 1.46;
 /** Parked yaw, swung clear of the platter. */
 const ARM_REST_YAW = 1.7;
+/** Headshell offset relative to the tube. Negative = inward toward the spindle. */
+const HEAD_YAW = -0.18;
+/** Stylus in headshell-local space (matches the mesh below). */
+const STYLUS_IN_HEAD = { x: -0.06, z: 0 };
+
+function headGroupX(armLen: number) {
+  return -(armLen - 0.05);
+}
+
+/** Stylus x/z in the arm plane (after head offset, before pivot yaw). */
+function stylusInArmPlane(armLen: number) {
+  const c = Math.cos(HEAD_YAW);
+  const s = Math.sin(HEAD_YAW);
+  return {
+    x: headGroupX(armLen) + STYLUS_IN_HEAD.x * c - STYLUS_IN_HEAD.z * s,
+    z: STYLUS_IN_HEAD.x * s + STYLUS_IN_HEAD.z * c,
+  };
+}
+
+function stylusWorldXZ(
+  pivot: THREE.Vector2,
+  armLen: number,
+  yaw: number
+): { x: number; z: number } {
+  const loc = stylusInArmPlane(armLen);
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  return {
+    x: pivot.x + loc.x * c + loc.z * s,
+    z: pivot.y - loc.x * s + loc.z * c,
+  };
+}
 
 function stylusRadius(pivot: THREE.Vector2, armLen: number, yaw: number): number {
-  const sx = pivot.x - armLen * Math.cos(yaw);
-  const sz = pivot.y + armLen * Math.sin(yaw);
-  return Math.hypot(sx, sz);
+  const p = stylusWorldXZ(pivot, armLen, yaw);
+  return Math.hypot(p.x, p.z);
 }
 
 /** Yaw that puts the stylus on a given groove radius. The stylus orbit has
@@ -124,14 +155,12 @@ export function armPoseFor(
   pivot: THREE.Vector2,
   armLen: number = ARM_LEN
 ): ArmPose {
+  const rest = stylusWorldXZ(pivot, armLen, ARM_REST_YAW);
   return {
     rest: { yaw: ARM_REST_YAW, lift: -0.1 },
     leadIn: { yaw: yawForRadius(pivot, armLen, 0.86), lift: 0.005 },
     runOut: { yaw: yawForRadius(pivot, armLen, 0.52), lift: 0.005 },
-    restPos: {
-      x: pivot.x - armLen * Math.cos(ARM_REST_YAW),
-      z: pivot.y + armLen * Math.sin(ARM_REST_YAW),
-    },
+    restPos: { x: rest.x, z: rest.z },
   };
 }
 
@@ -185,7 +214,8 @@ export function VinylDisc({
 
   useFrame((_, dt) => {
     if (!group.current || !playing) return;
-    group.current.rotation.y += RAD_PER_SEC * dt;
+    // Clockwise when viewed from above (negative Y is CW in right-hand coords).
+    group.current.rotation.y -= RAD_PER_SEC * dt;
   });
 
   return (
@@ -195,11 +225,11 @@ export function VinylDisc({
       <mesh castShadow receiveShadow>
         <cylinderGeometry args={[RECORD_R, RECORD_R, 0.013, 128, 1, true]} />
         <meshPhysicalMaterial
-          color="#f4c4ce"
+          color="#e8a0b0"
           roughness={0.22}
           metalness={0}
           transparent
-          opacity={0.38}
+          opacity={0.5}
           clearcoat={0.55}
           clearcoatRoughness={0.25}
           specularColor="#fff4f6"
@@ -220,7 +250,7 @@ export function VinylDisc({
           roughness={1}
           metalness={0}
           transparent
-          opacity={0.52}
+          opacity={0.64}
           depthWrite={false}
           clearcoat={0.85}
           clearcoatRoughness={0.12}
@@ -351,12 +381,13 @@ export function TonearmArm({
   armLen?: number;
 } = {}) {
   const poses = useMemo(() => armPoseFor(pivot, armLen), [pivot, armLen]);
-  const pivotRef = useRef<THREE.Group>(null);
+  const yawRef = useRef<THREE.Group>(null);
+  const liftRef = useRef<THREE.Group>(null);
   const yaw = useRef(poses.rest.yaw);
   const lift = useRef(poses.rest.lift);
 
   useFrame((_, dt) => {
-    if (!pivotRef.current) return;
+    if (!yawRef.current || !liftRef.current) return;
 
     // Read live playback clock every frame (not the ~4Hz React timeupdate).
     const s = usePlayerStore.getState();
@@ -380,20 +411,23 @@ export function TonearmArm({
     const k = 1 - Math.exp(-10 * dt);
     yaw.current = THREE.MathUtils.lerp(yaw.current, targetYaw, k);
     lift.current = THREE.MathUtils.lerp(lift.current, targetLift, k);
-    pivotRef.current.rotation.y = yaw.current;
-    pivotRef.current.rotation.z = lift.current;
+    // Nested gimbal: yaw around world Y, then lift around the arm's local Z
+    // so the tube length stays constant in the horizontal plane.
+    yawRef.current.rotation.y = yaw.current;
+    liftRef.current.rotation.z = lift.current;
   });
 
   return (
-    <group ref={pivotRef} position={[pivot.x, 0.132, pivot.y]}>
-      {/* Slim matte-black straight arm tube (length follows armLen) */}
+    <group ref={yawRef} position={[pivot.x, 0.132, pivot.y]}>
+      <group ref={liftRef}>
+      {/* Slim matte-black straight arm tube — runs all the way into the headshell. */}
       <mesh
-        position={[-(armLen - 0.05) / 2, 0, 0]}
+        position={[-armLen / 2, 0, 0]}
         rotation={[0, 0, Math.PI / 2]}
         material={armMaterial}
         castShadow
       >
-        <cylinderGeometry args={[0.013, 0.013, armLen - 0.15, 16]} />
+        <cylinderGeometry args={[0.013, 0.013, armLen - 0.1, 16]} />
       </mesh>
       {/* Rear stub + counterweight */}
       <mesh position={[0.1, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={armMaterial}>
@@ -407,32 +441,51 @@ export function TonearmArm({
       >
         <cylinderGeometry args={[0.05, 0.05, 0.09, 32]} />
       </mesh>
-      {/* Headshell — angled inward, cartridge + red stylus under the far end */}
-      <group position={[-(armLen - 0.04), 0, 0]} rotation={[0, 0.42, 0]}>
-        <mesh material={armMaterial} castShadow>
-          <boxGeometry args={[0.14, 0.018, 0.044]} />
-        </mesh>
-        {/* Finger lift */}
+      {/* Headshell — short paddle with a mild inward offset (real straight-arm
+          geometry: ~15° so the cartridge sits tangent to the groove, not
+          kicked out toward the rim). */}
+      <group position={[headGroupX(armLen), 0, 0]} rotation={[0, HEAD_YAW, 0]}>
+        {/* Sleeve that overlaps the tube tip so the joint reads as one piece */}
         <mesh
-          position={[0.048, 0.028, 0.016]}
-          rotation={[0, 0, -0.6]}
+          position={[0.022, 0, 0]}
+          rotation={[0, 0, Math.PI / 2]}
+          material={armMaterial}
+        >
+          <cylinderGeometry args={[0.0145, 0.013, 0.048, 12]} />
+        </mesh>
+        {/* Thin headshell paddle, butted against the sleeve */}
+        <mesh position={[-0.028, 0.001, 0]} material={armMaterial} castShadow>
+          <boxGeometry args={[0.08, 0.011, 0.036]} />
+        </mesh>
+        {/* Finger lift on the near side */}
+        <mesh
+          position={[0.006, 0.02, 0.018]}
+          rotation={[0.55, 0, 0.15]}
           material={steelMaterial}
         >
-          <cylinderGeometry args={[0.0035, 0.0035, 0.055, 8]} />
+          <cylinderGeometry args={[0.0024, 0.0024, 0.038, 8]} />
         </mesh>
-        {/* Cartridge body */}
-        <mesh position={[-0.012, -0.024, 0]}>
-          <boxGeometry args={[0.07, 0.03, 0.04]} />
-          <meshStandardMaterial color="#1c1c20" roughness={0.6} metalness={0.1} />
+        {/* Cartridge body tucked under the paddle */}
+        <mesh position={[-0.028, -0.018, 0]}>
+          <boxGeometry args={[0.046, 0.02, 0.026]} />
+          <meshStandardMaterial color="#1a1a1e" roughness={0.55} metalness={0.12} />
         </mesh>
-        {/* Red stylus tip (small but high-contrast) */}
+        {/* Tiny cantilever + red stylus under the front lip */}
         <mesh
-          position={[-0.04, -0.055, 0]}
-          rotation={[Math.PI, 0, 0]}
+          position={[-0.052, -0.028, 0]}
+          rotation={[0, 0, 0.4]}
+          material={steelMaterial}
+        >
+          <cylinderGeometry args={[0.0016, 0.0016, 0.018, 6]} />
+        </mesh>
+        <mesh
+          position={[-0.06, -0.04, 0]}
+          rotation={[Math.PI, 0, 0.15]}
           material={stylusMaterial}
         >
-          <coneGeometry args={[0.0075, 0.024, 10]} />
+          <coneGeometry args={[0.004, 0.012, 8]} />
         </mesh>
+      </group>
       </group>
     </group>
   );
