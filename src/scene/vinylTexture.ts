@@ -29,20 +29,54 @@ function drawGrooves(ctx: CanvasRenderingContext2D, cx: number, cy: number, size
   }
 }
 
+/** Letterspaced brand text, centered (Canvas2D has no letterSpacing everywhere). */
+function drawSpacedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  gap: number
+) {
+  const widths = [...text].map((ch) => ctx.measureText(ch).width);
+  const total = widths.reduce((a, b) => a + b, 0) + gap * (text.length - 1);
+  let x = cx - total / 2;
+  for (let i = 0; i < text.length; i++) {
+    ctx.fillText(text[i], x + widths[i] / 2, cy);
+    x += widths[i] + gap;
+  }
+}
+
+/** No-cover fallback: glowing concentric target rings, deep rose → hot pink core. */
 function drawFallbackLabel(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
   const lr = labelRadius(size);
-  ctx.fillStyle = "#e8e2d6";
+  const stops = [
+    "#7e1f3d",
+    "#a62c50",
+    "#c93a5e",
+    "#e84a6c",
+    "#ff5d7e",
+    "#ff7d94",
+    "#ffa3b3",
+    "#ffc4cd",
+  ];
+  for (let i = 0; i < stops.length; i++) {
+    ctx.fillStyle = stops[i];
+    ctx.beginPath();
+    ctx.arc(cx, cy, lr * (1 - i / stops.length), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Hot core dot + brand mark
+  ctx.fillStyle = "#ffdde3";
   ctx.beginPath();
-  ctx.arc(cx, cy, lr, 0, Math.PI * 2);
+  ctx.arc(cx, cy, lr * 0.1, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#c45c3e";
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr * 0.95, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#f4efe6";
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr * 0.62, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `600 ${Math.round(lr * 0.17)}px "Segoe UI", system-ui, sans-serif`;
+  drawSpacedText(ctx, "YOIN", cx, cy - lr * 0.32, lr * 0.07);
+  drawSpacedText(ctx, "33⅓ RPM", cx, cy + lr * 0.34, lr * 0.02);
+  ctx.font = `500 ${Math.round(lr * 0.1)}px "Segoe UI", system-ui, sans-serif`;
 }
 
 /**
@@ -262,6 +296,23 @@ export function makeVinylTexture(coverImage?: HTMLImageElement | null): THREE.Ca
   ctx.arc(cx, cy, SIZE * 0.018, 0, Math.PI * 2);
   ctx.stroke();
 
+  return toTexture(canvas);
+}
+
+/** Soft radial pink glow for the backlit platter center. */
+export function makeGlowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+  g.addColorStop(0, "rgba(255,196,206,0.95)");
+  g.addColorStop(0.16, "rgba(255,120,146,0.8)");
+  g.addColorStop(0.45, "rgba(235,82,118,0.34)");
+  g.addColorStop(0.85, "rgba(255,96,136,0.18)");
+  g.addColorStop(1, "rgba(255,96,136,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 512);
   return toTexture(canvas);
 }
 

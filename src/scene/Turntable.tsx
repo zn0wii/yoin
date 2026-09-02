@@ -1,24 +1,66 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
+import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { usePlayerStore } from "../store/playerStore";
 import { audioEngine } from "../audio/audioEngine";
 import { toAssetUrl } from "../audio/assetUrl";
 import { albumStylusProgress } from "../audio/albumProgress";
-import { loadImage, makeVinylTexture } from "./vinylTexture";
+import { loadImage, makeGlowTexture, makeVinylTexture } from "./vinylTexture";
 
 const PLATTER_RPM = 33.333;
 const RAD_PER_SEC = (PLATTER_RPM / 60) * Math.PI * 2;
 
-/**
- * Tonearm yaw (Y) ↔ stylus radius on the platter (pivot ≈ (0.95,0.95), arm ≈ 1.12):
- *   lead-in  yaw≈+0.03 → r≈1.00 (outer)
- *   run-out  yaw≈-0.37 → r≈0.55 (inner, just outside label)
- * Range is monotonic outer→inner. Lift (Z): negative = tip raised.
- */
-const ARM_REST = { yaw: 0.85, lift: -0.28 };
-const ARM_LEAD_IN = { yaw: 0.03, lift: 0.02 };
-const ARM_RUN_OUT = { yaw: -0.37, lift: 0.02 };
+const RECORD_R = 0.93;
+/** Label radius — must stay in sync with LABEL_OF_DISC in vinylTexture.ts. */
+const LABEL_R = RECORD_R * 0.48;
+
+/* Shared materials — module-level instances are safe to reuse across meshes. */
+const armMaterial = new THREE.MeshPhysicalMaterial({
+  color: "#0c0c0f",
+  roughness: 0.2,
+  metalness: 0.35,
+  clearcoat: 1,
+  clearcoatRoughness: 0.2,
+});
+const steelMaterial = new THREE.MeshStandardMaterial({
+  color: "#cfc9bd",
+  roughness: 0.25,
+  metalness: 0.9,
+});
+
+/* --- Tonearm kinematics --------------------------------------------------- */
+
+/** Pivot position on the plinth (rear-right), x/z in world space. */
+const ARM_PIVOT = new THREE.Vector2(1.08, -0.72);
+/** Distance pivot → stylus; the arm reaches along local −X. */
+const ARM_LEN = 1.245;
+/** Parked yaw, swung clear of the platter (~24° past lead-in). */
+const ARM_REST_YAW = 1.75;
+
+function stylusRadius(yaw: number): number {
+  const sx = ARM_PIVOT.x - ARM_LEN * Math.cos(yaw);
+  const sz = ARM_PIVOT.y + ARM_LEN * Math.sin(yaw);
+  return Math.hypot(sx, sz);
+}
+
+/** Yaw that puts the stylus on a given groove radius. Stylus radius grows
+ * monotonically with yaw across the sweep, so binary search converges. */
+function yawForRadius(r: number): number {
+  let lo = 0.7;
+  let hi = ARM_REST_YAW;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (stylusRadius(mid) > r) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** Lift (Z rotation): negative = tip raised, ~0 = needle on the groove. */
+const ARM_REST = { yaw: ARM_REST_YAW, lift: -0.09 };
+const ARM_LEAD_IN = { yaw: yawForRadius(0.9), lift: 0.004 };
+const ARM_RUN_OUT = { yaw: yawForRadius(0.52), lift: 0.004 };
 
 function useVinylMap(coverPath: string | null | undefined) {
   const fallback = useMemo(() => makeVinylTexture(null), []);
@@ -64,35 +106,112 @@ function VinylDisc({
   });
 
   return (
-    <group ref={group} position={[0, 0.055, 0]}>
-      {/* Cylinder is Y-up by default = flat disc on the platter. */}
-      <mesh castShadow receiveShadow>
-        <cylinderGeometry args={[1.05, 1.05, 0.018, 96]} />
-        <meshStandardMaterial color="#121214" roughness={0.55} metalness={0.05} />
+    <group ref={group} position={[0, 0.105, 0]}>
+      {/* Smoked-translucent side wall (openEnded — no caps to z-fight with
+          the label/groove planes stacked just above it) */}
+      <mesh castShadow>
+        <cylinderGeometry args={[RECORD_R, RECORD_R, 0.012, 96, 1, true]} />
+        <meshStandardMaterial
+          color="#15151a"
+          roughness={0.4}
+          metalness={0.1}
+          transparent
+          opacity={0.55}
+        />
       </mesh>
-      {/* Top face: grooves + album cover label */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <circleGeometry args={[1.05, 96]} />
-        <meshStandardMaterial map={grooveMap} roughness={0.45} metalness={0.05} />
+      {/* Grooved playing surface (see-through, lit from beneath) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0072, 0]}>
+        <ringGeometry args={[LABEL_R - 0.002, RECORD_R, 96]} />
+        <meshStandardMaterial
+          map={grooveMap}
+          roughness={0.42}
+          metalness={0.08}
+          transparent
+          opacity={0.72}
+          depthWrite={false}
+        />
       </mesh>
-      <mesh position={[0, 0.012, 0]}>
-        <cylinderGeometry args={[0.035, 0.035, 0.01, 32]} />
-        <meshStandardMaterial color="#2a2a2e" roughness={0.4} metalness={0.6} />
+      {/* Opaque center label (album cover / fallback rings) — slight
+          self-illumination so dark covers stay readable in the dim scene */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}>
+        <circleGeometry args={[LABEL_R, 64]} />
+        <meshStandardMaterial
+          map={grooveMap}
+          roughness={0.5}
+          metalness={0.02}
+          emissive="#ffffff"
+          emissiveMap={grooveMap}
+          emissiveIntensity={0.22}
+        />
       </mesh>
+    </group>
+  );
+}
+
+/**
+ * Backlit platter center: an additive pink glow disc under the record plus a
+ * matching accent light. Pulses with the music once the analyser has data.
+ */
+function CenterGlow({ playing }: { playing: boolean }) {
+  const mat = useRef<THREE.MeshBasicMaterial>(null);
+  const light = useRef<THREE.PointLight>(null);
+  const level = useRef(0.35);
+  const map = useMemo(() => makeGlowTexture(), []);
+
+  useFrame((_, dt) => {
+    const target = playing ? 0.65 + audioEngine.getAmplitude() * 0.7 : 0.35;
+    level.current = THREE.MathUtils.lerp(level.current, target, 1 - Math.exp(-6 * dt));
+    if (mat.current) mat.current.opacity = level.current;
+    if (light.current) light.current.intensity = level.current * 0.55;
+  });
+
+  return (
+    <group position={[0, 0.0975, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.985, 64]} />
+        <meshBasicMaterial
+          ref={mat}
+          map={map}
+          transparent
+          opacity={0.35}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <pointLight
+        ref={light}
+        position={[0, 0.3, 0]}
+        color="#ff6d8a"
+        intensity={0.4}
+        distance={2.8}
+        decay={2}
+      />
     </group>
   );
 }
 
 function Platter() {
   return (
-    <group position={[0, 0.03, 0]}>
-      <mesh receiveShadow castShadow>
-        <cylinderGeometry args={[1.12, 1.12, 0.04, 64]} />
-        <meshStandardMaterial color="#2c2c30" roughness={0.55} metalness={0.35} />
+    <group>
+      {/* Frosted acrylic platter */}
+      <mesh castShadow receiveShadow position={[0, 0.07, 0]}>
+        <cylinderGeometry args={[1, 1, 0.05, 96]} />
+        <meshStandardMaterial
+          color="#e8e3db"
+          roughness={0.5}
+          metalness={0}
+          transparent
+          opacity={0.9}
+        />
       </mesh>
-      <mesh position={[0, 0.022, 0]}>
-        <cylinderGeometry args={[1.08, 1.08, 0.006, 64]} />
-        <meshStandardMaterial color="#1a1a1c" roughness={0.9} metalness={0} />
+      {/* Machined rim detail */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0952, 0]}>
+        <ringGeometry args={[0.955, 0.995, 96]} />
+        <meshStandardMaterial color="#c9c3b8" roughness={0.6} />
+      </mesh>
+      {/* Spindle */}
+      <mesh position={[0, 0.125, 0]} material={steelMaterial} castShadow>
+        <cylinderGeometry args={[0.016, 0.016, 0.06, 24]} />
       </mesh>
     </group>
   );
@@ -133,28 +252,67 @@ function Tonearm() {
   });
 
   return (
-    <group position={[0.95, 0.12, 0.95]}>
-      <mesh castShadow>
-        <cylinderGeometry args={[0.09, 0.1, 0.06, 32]} />
-        <meshStandardMaterial color="#d8d2c8" roughness={0.35} metalness={0.55} />
+    <group>
+      {/* Mount base + collar (static) */}
+      <mesh
+        position={[ARM_PIVOT.x, 0.0875, ARM_PIVOT.y]}
+        material={armMaterial}
+        castShadow
+        receiveShadow
+      >
+        <cylinderGeometry args={[0.095, 0.105, 0.085, 32]} />
       </mesh>
-      <group ref={pivot} position={[0, 0.04, 0]}>
-        <mesh position={[0.18, 0.02, 0]} castShadow>
-          <boxGeometry args={[0.14, 0.05, 0.05]} />
-          <meshStandardMaterial color="#3a3a3e" roughness={0.4} metalness={0.5} />
+      <mesh position={[ARM_PIVOT.x, 0.1475, ARM_PIVOT.y]} material={armMaterial}>
+        <cylinderGeometry args={[0.04, 0.04, 0.035, 24]} />
+      </mesh>
+
+      <group ref={pivot} position={[ARM_PIVOT.x, 0.18, ARM_PIVOT.y]}>
+        {/* Straight glossy arm tube */}
+        <mesh
+          position={[-0.62, 0, 0]}
+          rotation={[0, 0, Math.PI / 2]}
+          material={armMaterial}
+          castShadow
+        >
+          <cylinderGeometry args={[0.015, 0.015, 1.16, 16]} />
         </mesh>
-        <mesh position={[-0.55, 0.025, 0]} rotation={[0, 0, 0.02]} castShadow>
-          <boxGeometry args={[1.0, 0.028, 0.028]} />
-          <meshStandardMaterial color="#c8c2b8" roughness={0.3} metalness={0.7} />
+        {/* Rear stub + counterweight */}
+        <mesh position={[0.1, 0, 0]} rotation={[0, 0, Math.PI / 2]} material={armMaterial}>
+          <cylinderGeometry args={[0.011, 0.011, 0.14, 12]} />
         </mesh>
-        <group position={[-1.08, 0.01, 0]}>
-          <mesh castShadow>
-            <boxGeometry args={[0.12, 0.02, 0.07]} />
-            <meshStandardMaterial color="#2e2e32" roughness={0.45} metalness={0.4} />
+        <mesh
+          position={[0.19, 0, 0]}
+          rotation={[0, 0, Math.PI / 2]}
+          material={armMaterial}
+          castShadow
+        >
+          <cylinderGeometry args={[0.052, 0.052, 0.095, 32]} />
+        </mesh>
+        {/* Headshell — angled inward, cartridge + stylus under the far end */}
+        <group position={[-1.2, 0, 0]} rotation={[0, 0.42, 0]}>
+          <mesh material={armMaterial} castShadow>
+            <boxGeometry args={[0.15, 0.02, 0.048]} />
           </mesh>
-          <mesh position={[-0.04, -0.03, 0]}>
-            <coneGeometry args={[0.008, 0.04, 8]} />
-            <meshStandardMaterial color="#111114" roughness={0.3} metalness={0.8} />
+          {/* Finger lift */}
+          <mesh
+            position={[0.05, 0.03, 0.018]}
+            rotation={[0, 0, -0.6]}
+            material={steelMaterial}
+          >
+            <cylinderGeometry args={[0.004, 0.004, 0.06, 8]} />
+          </mesh>
+          {/* Cartridge body */}
+          <mesh position={[-0.015, -0.026, 0]}>
+            <boxGeometry args={[0.075, 0.032, 0.042]} />
+            <meshStandardMaterial color="#26262b" roughness={0.55} metalness={0.1} />
+          </mesh>
+          {/* Stylus (tip down) */}
+          <mesh
+            position={[-0.045, -0.056, 0]}
+            rotation={[Math.PI, 0, 0]}
+            material={steelMaterial}
+          >
+            <coneGeometry args={[0.007, 0.024, 8]} />
           </mesh>
         </group>
       </group>
@@ -165,40 +323,56 @@ function Tonearm() {
 function Plinth() {
   return (
     <group>
-      <mesh position={[0.15, 0, 0.05]} receiveShadow castShadow>
-        <boxGeometry args={[2.6, 0.08, 2.2]} />
-        <meshStandardMaterial color="#f2ebe0" roughness={0.65} metalness={0.05} />
-      </mesh>
-      <mesh position={[1.05, 0.055, -0.15]} castShadow>
-        <boxGeometry args={[0.55, 0.03, 1.5]} />
-        <meshStandardMaterial color="#ece4d8" roughness={0.5} metalness={0.1} />
-      </mesh>
-      <mesh position={[1.05, 0.09, 0.35]} castShadow>
-        <cylinderGeometry args={[0.06, 0.06, 0.04, 24]} />
-        <meshStandardMaterial color="#c45c3e" roughness={0.4} metalness={0.2} />
-      </mesh>
-      <mesh position={[1.05, 0.08, -0.35]} castShadow>
-        <boxGeometry args={[0.08, 0.02, 0.35]} />
-        <meshStandardMaterial color="#2a2a2e" roughness={0.5} metalness={0.3} />
-      </mesh>
-      <mesh position={[0, 0.08, 0]} castShadow>
-        <cylinderGeometry args={[0.025, 0.025, 0.08, 16]} />
-        <meshStandardMaterial color="#b8b2a8" roughness={0.25} metalness={0.85} />
-      </mesh>
+      {/* Matte white low-profile chassis */}
+      <RoundedBox
+        args={[2.9, 0.09, 2.05]}
+        radius={0.028}
+        smoothness={4}
+        position={[0.05, 0, 0]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color="#f2efe9" roughness={0.62} metalness={0.02} />
+      </RoundedBox>
+      {/* Rubber feet */}
+      {(
+        [
+          [-1.22, -0.78],
+          [-1.22, 0.78],
+          [1.32, -0.78],
+          [1.32, 0.78],
+        ] as const
+      ).map(([x, z]) => (
+        <mesh key={`${x},${z}`} position={[x, -0.075, z]} castShadow>
+          <cylinderGeometry args={[0.1, 0.11, 0.06, 24]} />
+          <meshStandardMaterial color="#26221e" roughness={0.85} />
+        </mesh>
+      ))}
+      {/* Arm rest post + clip, where the headshell parks */}
+      <group position={[1.29, 0, 0.45]}>
+        <mesh position={[0, 0.16, 0]} material={armMaterial} castShadow>
+          <cylinderGeometry args={[0.016, 0.02, 0.23, 16]} />
+        </mesh>
+        <mesh position={[0, 0.283, 0]} material={armMaterial}>
+          <boxGeometry args={[0.052, 0.02, 0.032]} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
+/** Dark warm surface the deck sits on. */
 function Desk() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.041, 0]} receiveShadow>
-      <planeGeometry args={[12, 12]} />
-      <meshStandardMaterial color="#e8e2d8" roughness={0.85} metalness={0} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.112, 0]} receiveShadow>
+      <planeGeometry args={[40, 40]} />
+      <meshStandardMaterial color="#211a13" roughness={0.92} metalness={0} />
     </mesh>
   );
 }
 
-/** Procedural Technics-inspired turntable. Spins + drops tonearm when playing. */
+/** Procedural minimalist turntable — white plinth, frosted backlit platter,
+ * glossy black straight arm. Spins + drops the arm when playing. */
 export function Turntable() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const albums = usePlayerStore((s) => s.albums);
@@ -213,6 +387,7 @@ export function Turntable() {
       <Desk />
       <Plinth />
       <Platter />
+      <CenterGlow playing={active} />
       <VinylDisc playing={active} coverPath={coverPath} />
       <Tonearm />
     </group>
