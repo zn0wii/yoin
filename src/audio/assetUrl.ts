@@ -9,7 +9,7 @@ export function toAssetUrl(filePath: string): string {
     filePath.startsWith("http://") ||
     filePath.startsWith("https://") ||
     filePath.startsWith("blob:") ||
-    filePath.startsWith("/demo/")
+    filePath.startsWith("/@fs/")
   ) {
     return filePath;
   }
