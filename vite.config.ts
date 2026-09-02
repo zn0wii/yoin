@@ -37,17 +37,7 @@ function demoLibraryPlugin(): Plugin {
     return null;
   };
 
-  const parseAlbumLabel = (folder: string) => {
-    const i = folder.indexOf(" - ");
-    if (i > 0 && i < folder.length - 3) {
-      const artist = folder.slice(0, i).trim();
-      const title = folder.slice(i + 3).trim();
-      if (artist && title) return { name: title, artist };
-    }
-    return { name: folder, artist: null as string | null };
-  };
-
-  const scanAlbum = (dir: string, folderName: string) => {
+  const scanAlbum = (dir: string, albumName: string, artist: string) => {
     const tracks = fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".mp3"))
@@ -57,9 +47,15 @@ function demoLibraryPlugin(): Plugin {
       }))
       .sort((a, b) => a.title.localeCompare(b.title));
     if (tracks.length === 0) return null;
-    const { name, artist } = parseAlbumLabel(folderName);
-    return { name, artist, tracks, cover: findCover(dir) };
+    return { name: albumName, artist, tracks, cover: findCover(dir) };
   };
+
+  const listDirs = (dir: string) =>
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
 
   return {
     name: "demo-library",
@@ -68,18 +64,16 @@ function demoLibraryPlugin(): Plugin {
       server.middlewares.use("/demo-library.json", (_req, res) => {
         try {
           const albums: unknown[] = [];
-          const root = scanAlbum(musicDir, "Root");
-          if (root) albums.push(root);
-          for (const entry of fs
-            .readdirSync(musicDir, { withFileTypes: true })
-            .filter((e) => e.isDirectory())
-            .map((e) => e.name)
-            .sort()) {
-            const album = scanAlbum(
-              path.join(musicDir, entry),
-              entry
-            );
-            if (album) albums.push(album);
+          for (const artist of listDirs(musicDir)) {
+            const artistDir = path.join(musicDir, artist);
+            for (const album of listDirs(artistDir)) {
+              const hit = scanAlbum(
+                path.join(artistDir, album),
+                album,
+                artist
+              );
+              if (hit) albums.push(hit);
+            }
           }
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify(albums));

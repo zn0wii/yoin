@@ -72,14 +72,21 @@ body,
 }
 
 @media (max-width: 720px) {
+  .app-root {
+    --ui-inset: 12px;
+    --nav-w: 120px;
+    --player-space: 96px;
+    --tracks-h: 34vh;
+  }
+
   .app-sidebar {
-    left: 12px;
-    right: 12px;
+    left: var(--ui-inset);
+    right: var(--ui-inset);
     top: auto;
-    bottom: 128px;
+    bottom: var(--player-space);
     width: auto;
-    height: auto;
-    max-height: min(438px, 32vh);
+    height: var(--tracks-h);
+    max-height: var(--tracks-h);
     border-radius: 16px;
   }
 }

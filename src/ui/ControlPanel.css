@@ -345,8 +345,8 @@
 
 @media (max-width: 720px) {
   .player-bar {
-    left: 10px;
-    right: 10px;
+    left: var(--ui-inset, 12px);
+    right: var(--ui-inset, 12px);
     bottom: 10px;
     height: auto;
     min-height: 64px;

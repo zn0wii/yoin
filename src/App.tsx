@@ -2,9 +2,13 @@ import { useCallback, useEffect } from "react";
 import { usePlayerStore } from "./store/playerStore";
 import { useAudioSync } from "./audio/useAudioSync";
 import { scanLibrary, pickMusicFolder } from "./audio/libraryApi";
+import { LibraryNav } from "./ui/LibraryNav";
+import { AlbumGrid } from "./ui/AlbumGrid";
 import { TrackList } from "./ui/TrackList";
 import { ControlPanel } from "./ui/ControlPanel";
 import { VinylStage } from "./scene/VinylStage";
+import "./ui/LibraryNav.css";
+import "./ui/AlbumGrid.css";
 import "./ui/TrackList.css";
 import "./ui/ControlPanel.css";
 import "./App.css";
@@ -13,6 +17,9 @@ function App() {
   const setAlbums = usePlayerStore((s) => s.setAlbums);
   const setLoading = usePlayerStore((s) => s.setLoading);
   const setError = usePlayerStore((s) => s.setError);
+  const libraryOpen = usePlayerStore((s) => s.libraryOpen);
+  const browseAlbumIndex = usePlayerStore((s) => s.browseAlbumIndex);
+  const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
 
   useAudioSync();
 
@@ -24,7 +31,7 @@ function App() {
         const albums = await scanLibrary(dir);
         setAlbums(albums, dir ?? null);
         if (albums.length === 0) {
-          setError("No mp3 files found in this folder.");
+          setError("未找到专辑。请选择 root / 艺术家 / 专辑 文件夹。");
         }
       } catch (err) {
         setError(String(err));
@@ -46,14 +53,20 @@ function App() {
     }
   }, [loadLibrary]);
 
+  const showTracks = browseAlbumIndex >= 0 || currentAlbumIndex >= 0;
+
   return (
-    <div className="app-root">
+    <div className={`app-root${showTracks ? " tracks-open" : ""}`}>
       <main className="app-main">
         <VinylStage />
       </main>
-      <aside className="app-sidebar">
-        <TrackList />
-      </aside>
+      <LibraryNav onPickFolder={handlePickFolder} />
+      {libraryOpen ? <AlbumGrid /> : null}
+      {showTracks ? (
+        <aside className="app-sidebar">
+          <TrackList />
+        </aside>
+      ) : null}
       <ControlPanel onPickFolder={handlePickFolder} />
     </div>
   );

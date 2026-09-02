@@ -24,9 +24,10 @@ function IconPause() {
   );
 }
 
-/** Floating library panel: album name + artist, then tracks. */
+/** Right panel: tracks of the browsed album. */
 export function TrackList() {
   const albums = usePlayerStore((s) => s.albums);
+  const browseAlbumIndex = usePlayerStore((s) => s.browseAlbumIndex);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
   const currentTrackIndex = usePlayerStore((s) => s.currentTrackIndex);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -34,61 +35,56 @@ export function TrackList() {
   const selectTrack = usePlayerStore((s) => s.selectTrack);
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
 
-  const handleClick = (albumIndex: number, trackIndex: number) => {
-    const isCurrent =
-      albumIndex === currentAlbumIndex && trackIndex === currentTrackIndex;
-    if (isCurrent) {
-      setIsPlaying(!isPlaying);
-    } else {
-      selectTrack(albumIndex, trackIndex);
-    }
-  };
+  const albumIndex =
+    browseAlbumIndex >= 0 ? browseAlbumIndex : currentAlbumIndex;
+  const album = albums[albumIndex];
 
-  if (albums.length === 0) {
+  if (!album) {
     return (
       <div className="track-list">
-        <div className="track-list-empty">No albums found</div>
+        <div className="track-list-empty">选择一张唱片</div>
       </div>
     );
   }
 
   return (
     <div className="track-list">
-      {albums.map((album, albumIndex) => (
-        <div key={`${album.artist ?? ""}:${album.name}`} className="track-list-album">
-          <div className="track-list-album-header">
-            <div className="track-list-album-name">{album.name}</div>
-            {album.artist ? (
-              <div className="track-list-album-artist">{album.artist}</div>
-            ) : null}
-          </div>
-          {album.tracks.map((track, trackIndex) => {
-            const isCurrent =
-              albumIndex === currentAlbumIndex &&
-              trackIndex === currentTrackIndex;
-            const dur = formatTime(trackDurations[track.path]);
-            return (
-              <button
-                key={track.path}
-                className={`track-list-item${isCurrent ? " active" : ""}`}
-                onClick={() => handleClick(albumIndex, trackIndex)}
-              >
-                <span className="track-list-item-index">
-                  {isCurrent ? (
-                    <span className="track-list-item-icon">
-                      {isPlaying ? <IconPause /> : <IconPlay />}
-                    </span>
-                  ) : (
-                    String(trackIndex + 1).padStart(2, " ")
-                  )}
-                </span>
-                <span className="track-list-item-title">{track.title}</span>
-                {dur ? <span className="track-list-item-time">{dur}</span> : null}
-              </button>
-            );
-          })}
+      <div className="track-list-album">
+        <div className="track-list-album-header">
+          <div className="track-list-album-name">{album.name}</div>
+          {album.artist ? (
+            <div className="track-list-album-artist">{album.artist}</div>
+          ) : null}
         </div>
-      ))}
+        {album.tracks.map((track, trackIndex) => {
+          const isCurrent =
+            albumIndex === currentAlbumIndex &&
+            trackIndex === currentTrackIndex;
+          const dur = formatTime(trackDurations[track.path]);
+          return (
+            <button
+              key={track.path}
+              className={`track-list-item${isCurrent ? " active" : ""}`}
+              onClick={() => {
+                if (isCurrent) setIsPlaying(!isPlaying);
+                else selectTrack(albumIndex, trackIndex);
+              }}
+            >
+              <span className="track-list-item-index">
+                {isCurrent ? (
+                  <span className="track-list-item-icon">
+                    {isPlaying ? <IconPause /> : <IconPlay />}
+                  </span>
+                ) : (
+                  String(trackIndex + 1).padStart(2, " ")
+                )}
+              </span>
+              <span className="track-list-item-title">{track.title}</span>
+              {dur ? <span className="track-list-item-time">{dur}</span> : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

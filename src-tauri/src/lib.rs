@@ -10,29 +10,16 @@ struct TrackInfo {
     path: String,
 }
 
-/// A vinyl record: the root music folder, or one of its immediate
-/// subfolders. Each maps to exactly one physical record on the shelf.
+/// A vinyl record: `root/artist/album/*.mp3`.
 #[derive(Serialize, Clone)]
 struct Album {
-    /// Display name (folder name, or "Root" for the top-level record).
+    /// Album folder name.
     name: String,
-    /// Artist if the folder is named `Artist - Title`.
+    /// Artist folder name.
     artist: Option<String>,
     tracks: Vec<TrackInfo>,
     /// Absolute path to cover art (cover.jpg/png/…), if present in the folder.
     cover: Option<String>,
-}
-
-/// Split `Artist - Title` folder names; otherwise the whole stem is the title.
-fn parse_album_label(folder: &str) -> (String, Option<String>) {
-    if let Some((artist, title)) = folder.split_once(" - ") {
-        let artist = artist.trim();
-        let title = title.trim();
-        if !artist.is_empty() && !title.is_empty() {
-            return (title.to_string(), Some(artist.to_string()));
-        }
-    }
-    (folder.to_string(), None)
 }
 
 /// Resolve the default music directory.
@@ -124,12 +111,28 @@ fn collect_mp3s(dir: &Path) -> Result<Vec<TrackInfo>, String> {
     Ok(tracks)
 }
 
+fn dir_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string()
+}
+
+fn list_dirs(path: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(path)
+        .map_err(|e| format!("failed to read dir {}: {e}", path.display()))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    Ok(dirs)
+}
+
 /// Scan a music library directory (or the default one when `dir` is None).
 ///
-/// Layout convention: mp3 files directly in the root form one "record".
-/// Each immediate subfolder containing mp3 files forms another record.
-/// The whole tree is allow-listed on the asset protocol scope so the
-/// frontend can stream files back via `convertFileSrc`.
+/// Layout: `root/artist/album/*.mp3`. The whole tree is allow-listed on the
+/// asset protocol scope so the frontend can stream files via `convertFileSrc`.
 #[tauri::command]
 fn scan_library<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -149,48 +152,20 @@ fn scan_library<R: Runtime>(
         .map_err(|e| format!("failed to allow asset scope: {e}"))?;
 
     let mut albums = Vec::new();
-
-    let root_tracks = collect_mp3s(&root_dir)?;
-    if !root_tracks.is_empty() {
-        let name = root_dir
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Root")
-            .to_string();
-        let (name, artist) = parse_album_label(&name);
-        albums.push(Album {
-            name,
-            artist,
-            tracks: root_tracks,
-            cover: find_cover(&root_dir),
-        });
-    }
-
-    let mut subdirs: Vec<PathBuf> = std::fs::read_dir(&root_dir)
-        .map_err(|e| format!("failed to read dir {}: {e}", root_dir.display()))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    subdirs.sort();
-
-    for subdir in subdirs {
-        let tracks = collect_mp3s(&subdir)?;
-        if tracks.is_empty() {
-            continue;
+    for artist_dir in list_dirs(&root_dir)? {
+        let artist = dir_name(&artist_dir);
+        for album_dir in list_dirs(&artist_dir)? {
+            let tracks = collect_mp3s(&album_dir)?;
+            if tracks.is_empty() {
+                continue;
+            }
+            albums.push(Album {
+                name: dir_name(&album_dir),
+                artist: Some(artist.clone()),
+                tracks,
+                cover: find_cover(&album_dir),
+            });
         }
-        let name = subdir
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
-        let (name, artist) = parse_album_label(&name);
-        albums.push(Album {
-            name,
-            artist,
-            tracks,
-            cover: find_cover(&subdir),
-        });
     }
 
     Ok(albums)
