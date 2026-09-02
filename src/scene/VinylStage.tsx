@@ -131,18 +131,18 @@ export function VinylStage() {
         shadows="soft"
         dpr={[1, 2]}
         camera={{ position: CAMERA.pos, fov: CAMERA.fov, near: 0.1, far: 30 }}
-        gl={{ antialias: true, alpha: true, toneMappingExposure: 1.08 }}
+        gl={{ antialias: true, alpha: true, toneMappingExposure: 1.14 }}
       >
-        {/* Softbox-style key from upper-right: ambient-dominant, low contrast.
-            Casts the arm's soft shadow down-left onto the record. */}
+        {/* Key from upper-right: arm shadow falls down-left onto the record. */}
         <directionalLight
           castShadow
           position={[2.6, 4, 1.8]}
-          intensity={1.05}
-          color="#ffe8c8"
+          intensity={0.85}
+          color="#ffe4c0"
           shadow-mapSize={[1024, 1024]}
-          shadow-radius={6}
+          shadow-radius={8}
           shadow-bias={-0.0005}
+          shadow-intensity={0.45}
           shadow-camera-near={1}
           shadow-camera-far={12}
           shadow-camera-left={-2.5}
@@ -150,25 +150,39 @@ export function VinylStage() {
           shadow-camera-top={2.5}
           shadow-camera-bottom={-2.5}
         />
-        <directionalLight position={[-2.4, 2.6, 1.6]} intensity={0.35} color="#e8b8c8" />
-        <ambientLight intensity={0.6} color="#a89c92" />
+        {/* Left fill — drives the silvery groove band on the near-left rim. */}
+        <directionalLight position={[-3.2, 3.0, 1.6]} intensity={0.95} color="#fff6ee" />
+        <ambientLight intensity={0.3} color="#b0a298" />
 
-        {/* Very low environment intensity — satin materials only need a hint
-            of reflection, no glassy streaks. */}
-        <Environment resolution={64} frames={1}>
+        {/* Window-scale lightformers so groove normals / anisotropy catch a
+            soft specular band like vinyl.png, not a glassy mirror streak. */}
+        <Environment resolution={256} frames={1} environmentIntensity={1.05}>
           <Lightformer
-            intensity={1.1}
+            intensity={2.4}
+            color="#ffd8b0"
+            position={[2.4, 3.4, -2.2]}
+            rotation={[0, Math.PI, 0]}
+            scale={[6, 4, 1]}
+          />
+          <Lightformer
+            intensity={2.6}
+            color="#fff6ee"
+            position={[-3.6, 2.8, 2.2]}
+            rotation={[0, Math.PI / 3, 0]}
+            scale={[5, 3.5, 1]}
+          />
+          <Lightformer
+            intensity={0.8}
             color="#ffe2b8"
             position={[2.6, 3.2, 1.6]}
             rotation={[0, -Math.PI / 3, 0]}
             scale={[3, 3, 1]}
           />
           <Lightformer
-            intensity={0.5}
+            intensity={0.35}
             color="#ffc8d2"
-            position={[-2.6, 2.2, -1.2]}
-            rotation={[0, Math.PI / 2.4, 0]}
-            scale={[3, 2, 1]}
+            position={[0, 0.4, 3.2]}
+            scale={[8, 2, 1]}
           />
         </Environment>
 

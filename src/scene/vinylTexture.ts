@@ -1,110 +1,207 @@
 import * as THREE from "three";
 
-const SIZE = 1024;
-/** Outer disc radius in texture space (fraction of canvas). */
-const DISC_R = 0.48;
-/** Center label radius as a fraction of disc radius (larger = bigger cover). */
-const LABEL_OF_DISC = 0.48;
+const GROOVE_SIZE = 2048;
+const LABEL_SIZE = 1024;
+/** Disc fills the texture so RingGeometry UVs (0–1) land on the rim. */
+const DISC_R = 0.5;
+/** Center label radius as a fraction of disc radius. */
+export const LABEL_OF_DISC = 0.4;
 /** Pixels near this luminance count as "border / letterbox". */
 const BORDER_LUMA = 245;
 
-function labelRadius(size: number) {
-  return size * DISC_R * LABEL_OF_DISC;
+export type VinylGrooveMaps = {
+  map: THREE.DataTexture;
+  normalMap: THREE.DataTexture;
+  roughnessMap: THREE.DataTexture;
+};
+
+/** Opaque RGB pigment (t = 0 at label edge, 1 at rim). Disc translucency is
+ *  applied via material.opacity so alpha blending stays reliable with
+ *  MeshPhysicalMaterial + clearcoat. Tuned against assets/vinyl.png. */
+const VINYL_STOPS: { t: number; r: number; g: number; b: number }[] = [
+  { t: 0.0, r: 198, g: 148, b: 156 },
+  { t: 0.06, r: 216, g: 150, b: 158 },
+  { t: 0.22, r: 236, g: 176, b: 184 },
+  { t: 0.48, r: 246, g: 202, b: 206 },
+  { t: 0.75, r: 250, g: 224, b: 226 },
+  { t: 0.92, r: 252, g: 238, b: 236 },
+  { t: 0.98, r: 253, g: 244, b: 242 },
+  { t: 1.0, r: 240, g: 210, b: 214 },
+];
+
+function lerpStops(t: number): { r: number; g: number; b: number } {
+  const x = Math.min(1, Math.max(0, t));
+  let i = 0;
+  while (i < VINYL_STOPS.length - 2 && VINYL_STOPS[i + 1].t < x) i++;
+  const a = VINYL_STOPS[i];
+  const b = VINYL_STOPS[i + 1];
+  const u = (x - a.t) / Math.max(1e-6, b.t - a.t);
+  return {
+    r: a.r + (b.r - a.r) * u,
+    g: a.g + (b.g - a.g) * u,
+    b: a.b + (b.b - a.b) * u,
+  };
 }
 
-function drawGrooves(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
-  // Translucent pink vinyl base — deeper pink near the label, paler at the rim.
-  const base = ctx.createRadialGradient(
-    cx,
-    cy,
-    size * DISC_R * 0.28,
-    cx,
-    cy,
-    size * DISC_R
-  );
-  base.addColorStop(0, "#eb9cb4");
-  base.addColorStop(0.5, "#f4b8ca");
-  base.addColorStop(1, "#fadbe3");
-  ctx.fillStyle = base;
-  ctx.beginPath();
-  ctx.arc(cx, cy, size * DISC_R, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Dead-wax band just outside the label — slightly desaturated
-  const dw0 = size * DISC_R * LABEL_OF_DISC + size * 0.002;
-  const dw1 = dw0 + size * 0.016;
-  const dw = ctx.createRadialGradient(cx, cy, dw0, cx, cy, dw1);
-  dw.addColorStop(0, "rgba(214,168,176,0.55)");
-  dw.addColorStop(1, "rgba(214,168,176,0)");
-  ctx.fillStyle = dw;
-  ctx.beginPath();
-  ctx.arc(cx, cy, dw1, 0, Math.PI * 2);
-  ctx.arc(cx, cy, dw0, 0, Math.PI * 2, true);
-  ctx.fill();
-
-  // Fine concentric groove rings — subtle ripples, more present in the
-  // outer half where real pressings show them most.
-  const inner = dw1;
-  const outer = size * DISC_R;
-  for (let r = inner; r < outer - 1; r += 1.1) {
-    const t = (r - inner) / (outer - inner); // 0 inner → 1 rim
-    const a = 0.12 + t * 0.07 + (Math.sin(r * 0.4) + 1) * 0.04;
-    ctx.strokeStyle = `rgba(176,88,120,${a.toFixed(3)})`;
-    ctx.lineWidth = 0.9;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+/** sinc(x) = sin(πx)/(πx) — used to anti-alias groove sine rings. */
+function sinc(x: number) {
+  if (Math.abs(x) < 1e-5) return 1;
+  const p = x * Math.PI;
+  return Math.sin(p) / p;
 }
 
-/** Letterspaced brand text, centered (Canvas2D has no letterSpacing everywhere). */
-function drawSpacedText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  cx: number,
-  cy: number,
-  gap: number
-) {
-  const widths = [...text].map((ch) => ctx.measureText(ch).width);
-  const total = widths.reduce((a, b) => a + b, 0) + gap * (text.length - 1);
-  let x = cx - total / 2;
-  for (let i = 0; i < text.length; i++) {
-    ctx.fillText(text[i], x + widths[i] / 2, cy);
-    x += widths[i] + gap;
-  }
+function grooveWave(r: number, period: number) {
+  const phase = (r / period) * Math.PI * 2;
+  // Mild 2nd harmonic → slightly V-shaped lands, like a pressed groove.
+  const s = Math.sin(phase) * 0.78 + Math.sin(phase * 2) * 0.22;
+  return s * sinc(1 / period);
 }
 
-/** No-cover fallback: coral/salmon-pink concentric target rings, rim → warm core. */
-function drawFallbackLabel(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
-  const lr = labelRadius(size);
-  const stops = [
-    "#c04a52",
-    "#d35c56",
-    "#e2705e",
-    "#ef8567",
-    "#f99b74",
-    "#ffb28a",
-    "#ffc9a8",
-    "#ffdcc4",
-  ];
-  for (let i = 0; i < stops.length; i++) {
-    ctx.fillStyle = stops[i];
-    ctx.beginPath();
-    ctx.arc(cx, cy, lr * (1 - i / stops.length), 0, Math.PI * 2);
-    ctx.fill();
+function toDataTexture(
+  data: Uint8Array,
+  size: number,
+  srgb: boolean
+): THREE.DataTexture {
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 16;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/**
+ * PBR pack for the grooved PVC: milky pink albedo (with alpha), concentric
+ * groove normals, roughness, and a circular anisotropy direction field.
+ * Generated once — independent of the center label.
+ */
+export function makeVinylGrooveMaps(): VinylGrooveMaps {
+  const size = GROOVE_SIZE;
+  const cx = size / 2;
+  const cy = size / 2;
+  const discPx = size * DISC_R;
+  const labelPx = discPx * LABEL_OF_DISC;
+  const deadWax = labelPx + size * 0.012;
+  const period = 2.2;
+  const amp = 0.2;
+
+  const albedo = new Uint8Array(size * size * 4);
+  const normal = new Uint8Array(size * size * 4);
+  const rough = new Uint8Array(size * size * 4);
+
+  // 1D radial profiles — analytical normals stay perfectly circular.
+  const nProf = size + 2;
+  const height = new Float32Array(nProf);
+  const hPrime = new Float32Array(nProf);
+
+  for (let i = 0; i < nProf; i++) {
+    const r = i;
+    if (r < labelPx || r > discPx) {
+      height[i] = 0;
+      continue;
+    }
+    const t = (r - labelPx) / (discPx - labelPx);
+    const inDead = r < deadWax ? (deadWax - r) / (deadWax - labelPx) : 0;
+    const envelope = (0.5 + 0.5 * Math.pow(t, 0.55)) * (1 - inDead * 0.92);
+    const group = Math.sin(r * 0.42) * 0.16;
+    const lead =
+      1 +
+      0.28 * (1 - smooth01((r - labelPx) / 22)) +
+      0.2 * smooth01((r - (discPx - 26)) / 18);
+    height[i] = (grooveWave(r, period) + group) * envelope * lead * amp;
+    // Raised lip at the physical rim.
+    if (t > 0.975) height[i] += ((t - 0.975) / 0.025) * 0.22;
   }
-  // Hot core dot + brand mark
-  ctx.fillStyle = "#fff1e4";
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = `600 ${Math.round(lr * 0.17)}px "Segoe UI", system-ui, sans-serif`;
-  drawSpacedText(ctx, "YOIN", cx, cy - lr * 0.32, lr * 0.07);
-  drawSpacedText(ctx, "33⅓ RPM", cx, cy + lr * 0.34, lr * 0.02);
-  ctx.font = `500 ${Math.round(lr * 0.1)}px "Segoe UI", system-ui, sans-serif`;
+  for (let i = 1; i < nProf - 1; i++) {
+    hPrime[i] = (height[i + 1] - height[i - 1]) * 0.5;
+  }
+
+  const flatN = 127;
+
+  for (let y = 0; y < size; y++) {
+    const py = y + 0.5 - cy; // +up, GL-style (flipY = false)
+    for (let x = 0; x < size; x++) {
+      const px = x + 0.5 - cx;
+      const r = Math.hypot(px, py);
+      const i = (y * size + x) * 4;
+
+      if (r > discPx + 0.6) {
+        albedo[i] = 0;
+        albedo[i + 1] = 0;
+        albedo[i + 2] = 0;
+        albedo[i + 3] = 0;
+        normal[i] = flatN;
+        normal[i + 1] = flatN;
+        normal[i + 2] = 255;
+        normal[i + 3] = 255;
+        rough[i] = 80;
+        rough[i + 1] = 80;
+        rough[i + 2] = 80;
+        rough[i + 3] = 255;
+        continue;
+      }
+
+      const t = (r - labelPx) / Math.max(1, discPx - labelPx);
+      const col = lerpStops(t);
+      const ri = Math.min(nProf - 2, Math.max(1, r | 0));
+      const frac = r - ri;
+      const hp = hPrime[ri] + (hPrime[ri + 1] - hPrime[ri]) * frac;
+
+      // Very soft land/valley albedo — the silvery band mostly comes from
+      // normals + anisotropy, not painted dark rings.
+      const wave = grooveWave(r, period);
+      const inGroove = r >= labelPx && r <= discPx ? 1 : 0;
+      const lift = wave * 6 * inGroove;
+      // Soft silvering on groove peaks — reads under soft studio light.
+      const silver = Math.max(0, wave) * 14 * inGroove;
+      const rC = Math.min(255, Math.max(0, col.r + lift + silver));
+      const gC = Math.min(255, Math.max(0, col.g + lift * 0.75 + silver));
+      const bC = Math.min(255, Math.max(0, col.b + lift * 0.8 + silver * 0.95));
+      const aa = r > discPx ? Math.max(0, 1 - (r - discPx)) : 1;
+
+      albedo[i] = rC;
+      albedo[i + 1] = gC;
+      albedo[i + 2] = bC;
+      albedo[i + 3] = 255 * aa;
+
+      // Tangent-space normal from radial height. nz stays ~1 (shallow grooves).
+      const invR = r > 0.25 ? 1 / r : 0;
+      let nx = -hp * px * invR;
+      let ny = -hp * py * invR;
+      const invLen = 1 / Math.hypot(nx, ny, 1);
+      nx *= invLen;
+      ny *= invLen;
+      const nz = invLen;
+      normal[i] = Math.min(255, Math.max(0, nx * 127.5 + 127.5));
+      normal[i + 1] = Math.min(255, Math.max(0, ny * 127.5 + 127.5));
+      normal[i + 2] = Math.min(255, Math.max(0, nz * 127.5 + 127.5));
+      normal[i + 3] = 255;
+
+      // Peaks glossier — that's where the silvery band lives.
+      const rg = 0.22 + wave * -0.08 + (1 - inGroove) * 0.1;
+      const rv = Math.min(255, Math.max(0, rg * 255));
+      rough[i] = rv;
+      rough[i + 1] = rv;
+      rough[i + 2] = rv;
+      rough[i + 3] = 255;
+    }
+  }
+
+  return {
+    map: toDataTexture(albedo, size, true),
+    normalMap: toDataTexture(normal, size, false),
+    roughnessMap: toDataTexture(rough, size, false),
+  };
+}
+
+function smooth01(x: number) {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -129,7 +226,6 @@ function contentSquare(
     const b = data[i + 2];
     const a = data[i + 3];
     if (a < 8) return true;
-    // Near-white / light beige letterbox
     return r >= BORDER_LUMA && g >= BORDER_LUMA && b >= BORDER_LUMA - 8;
   };
 
@@ -159,7 +255,6 @@ function contentSquare(
     }
   }
 
-  // Fallback if trim failed (flat / all-light image)
   if (right - left < 8 || bottom - top < 8) {
     const side = Math.min(w, h);
     return { sx: (w - side) / 2, sy: (h - side) / 2, sw: side, sh: side };
@@ -170,7 +265,6 @@ function contentSquare(
   const side = Math.min(bw, bh);
   const sx = left + (bw - side) / 2;
   const sy = top + (bh - side) / 2;
-  // Inset a hair so residual edge pixels don't show in the circle
   const inset = Math.max(1, side * 0.02);
   return {
     sx: sx + inset,
@@ -197,7 +291,7 @@ function drawPaperGrain(
     img.data[i] = n;
     img.data[i + 1] = n;
     img.data[i + 2] = n;
-    img.data[i + 3] = 28;
+    img.data[i + 3] = 22;
   }
   gctx.putImageData(img, 0, 0);
   ctx.save();
@@ -209,14 +303,39 @@ function drawPaperGrain(
   ctx.restore();
 }
 
+/** No-cover fallback: coral → cream concentric target, matching vinyl.png. */
+function drawFallbackLabel(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const lr = size / 2;
+  const stops = [
+    "#7a444e",
+    "#9a4e58",
+    "#c0565c",
+    "#d46658",
+    "#e27a5c",
+    "#ee9168",
+    "#f4aa80",
+    "#f4c4a0",
+    "#f3d8bc",
+    "#f0e4d2",
+  ];
+  for (let i = 0; i < stops.length; i++) {
+    ctx.fillStyle = stops[i];
+    ctx.beginPath();
+    ctx.arc(cx, cy, lr * (1 - i / stops.length), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawCoverLabel(
   ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
   size: number,
   cover: HTMLImageElement
 ) {
-  const lr = labelRadius(size);
+  const cx = size / 2;
+  const cy = size / 2;
+  const lr = size / 2;
   const crop = contentSquare(cover);
 
   ctx.save();
@@ -224,7 +343,6 @@ function drawCoverLabel(
   ctx.arc(cx, cy, lr, 0, Math.PI * 2);
   ctx.clip();
 
-  // Soft print look: slight contrast via darker underlay
   ctx.fillStyle = "#1a1816";
   ctx.fillRect(cx - lr, cy - lr, lr * 2, lr * 2);
 
@@ -240,7 +358,6 @@ function drawCoverLabel(
     lr * 2
   );
 
-  // Radial vignette — label paper darkens toward the rim
   const vig = ctx.createRadialGradient(cx, cy, lr * 0.35, cx, cy, lr);
   vig.addColorStop(0, "rgba(0,0,0,0)");
   vig.addColorStop(0.7, "rgba(0,0,0,0.06)");
@@ -248,47 +365,45 @@ function drawCoverLabel(
   ctx.fillStyle = vig;
   ctx.fillRect(cx - lr, cy - lr, lr * 2, lr * 2);
 
-  // Glossy paper sheen (soft specular streak)
-  const sheen = ctx.createLinearGradient(cx - lr, cy - lr, cx + lr, cy + lr * 0.2);
-  sheen.addColorStop(0, "rgba(255,255,255,0)");
-  sheen.addColorStop(0.35, "rgba(255,255,255,0.14)");
-  sheen.addColorStop(0.45, "rgba(255,255,255,0.05)");
-  sheen.addColorStop(0.55, "rgba(255,255,255,0)");
-  sheen.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.globalCompositeOperation = "soft-light";
-  ctx.fillStyle = sheen;
-  ctx.fillRect(cx - lr, cy - lr, lr * 2, lr * 2);
-  ctx.globalCompositeOperation = "source-over";
-
   ctx.restore();
-
-  // Paper grain over the label
-  drawPaperGrain(ctx, cx, cy, lr);
-
-  // Raised paper rim where label meets the vinyl
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(0,0,0,0.45)";
-  ctx.lineWidth = size * 0.0035;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, lr - size * 0.002, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.lineWidth = size * 0.002;
-  ctx.stroke();
-
-  // Tiny concentric wear rings just outside the label
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, lr + size * (0.004 + i * 0.003), 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255,255,255,${0.04 - i * 0.01})`;
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
 }
 
-function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+function drawLabelRim(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const lr = size / 2;
+
+  drawPaperGrain(ctx, cx, cy, lr);
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, lr - 1, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(0,0,0,0.42)";
+  ctx.lineWidth = size * 0.007;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, lr - size * 0.012, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.lineWidth = size * 0.004;
+  ctx.stroke();
+}
+
+function drawSpindleHole(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const hole = size * 0.038;
+  ctx.fillStyle = "#2a1c1e";
+  ctx.beginPath();
+  ctx.arc(cx, cy, hole, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 230, 220, 0.28)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, hole, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function toCanvasTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
@@ -296,35 +411,24 @@ function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   return tex;
 }
 
-/** Procedural vinyl face with optional album cover in the center label. */
-export function makeVinylTexture(coverImage?: HTMLImageElement | null): THREE.CanvasTexture {
+/** Paper label that fills CircleGeometry's 0–1 UV (square canvas, circular art). */
+export function makeVinylLabelTexture(
+  coverImage?: HTMLImageElement | null
+): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
-  canvas.width = SIZE;
-  canvas.height = SIZE;
+  canvas.width = LABEL_SIZE;
+  canvas.height = LABEL_SIZE;
   const ctx = canvas.getContext("2d")!;
-  const cx = SIZE / 2;
-  const cy = SIZE / 2;
-
-  drawGrooves(ctx, cx, cy, SIZE);
 
   if (coverImage && coverImage.complete && coverImage.naturalWidth > 0) {
-    drawCoverLabel(ctx, cx, cy, SIZE, coverImage);
+    drawCoverLabel(ctx, LABEL_SIZE, coverImage);
   } else {
-    drawFallbackLabel(ctx, cx, cy, SIZE);
+    drawFallbackLabel(ctx, LABEL_SIZE);
   }
+  drawLabelRim(ctx, LABEL_SIZE);
+  drawSpindleHole(ctx, LABEL_SIZE);
 
-  // Spindle hole
-  ctx.fillStyle = "#9d5568";
-  ctx.beginPath();
-  ctx.arc(cx, cy, SIZE * 0.018, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,235,225,0.4)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, SIZE * 0.018, 0, Math.PI * 2);
-  ctx.stroke();
-
-  return toTexture(canvas);
+  return toCanvasTexture(canvas);
 }
 
 /** Soft radial pink glow for the backlit platter center. */
@@ -341,7 +445,7 @@ export function makeGlowTexture(): THREE.CanvasTexture {
   g.addColorStop(1, "rgba(255,96,136,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 512, 512);
-  return toTexture(canvas);
+  return toCanvasTexture(canvas);
 }
 
 /**
@@ -361,7 +465,6 @@ export function makePlatterTexture(): THREE.CanvasTexture {
   g.addColorStop(1, "rgba(240,199,210,0.5)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 512, 512);
-  // Faint concentral machining rings for the frosted look
   for (let r = 40; r < 250; r += 14) {
     ctx.strokeStyle = `rgba(214,170,182,${(0.1 - (r / 250) * 0.06).toFixed(3)})`;
     ctx.lineWidth = 1;
@@ -369,7 +472,7 @@ export function makePlatterTexture(): THREE.CanvasTexture {
     ctx.arc(256, 256, r, 0, Math.PI * 2);
     ctx.stroke();
   }
-  return toTexture(canvas);
+  return toCanvasTexture(canvas);
 }
 
 export function loadImage(url: string): Promise<HTMLImageElement> {

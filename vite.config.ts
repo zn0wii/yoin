@@ -102,8 +102,16 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      //    and design-reference assets (locked files there crash the watcher)
-      ignored: ["**/src-tauri/**", "assets/**"],
+      //    plus anything under `assets/` (glob matching proved unreliable for
+      //    deeply nested new files on Windows — a normalized-path function is
+      //    airtight against EBUSY crashes from files locked by other apps)
+      ignored: [
+        "**/src-tauri/**",
+        (path: string) => {
+        const p = path.replace(/\\/g, "/");
+        return /\/assets$/.test(p) || /\/assets\//.test(p);
+        },
+      ],
     },
   },
 }));

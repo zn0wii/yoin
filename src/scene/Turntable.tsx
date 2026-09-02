@@ -7,10 +7,12 @@ import { audioEngine } from "../audio/audioEngine";
 import { toAssetUrl } from "../audio/assetUrl";
 import { albumStylusProgress } from "../audio/albumProgress";
 import {
+  LABEL_OF_DISC,
   loadImage,
   makeGlowTexture,
   makePlatterTexture,
-  makeVinylTexture,
+  makeVinylGrooveMaps,
+  makeVinylLabelTexture,
 } from "./vinylTexture";
 
 const PLATTER_RPM = 33.333;
@@ -21,8 +23,39 @@ const PLATTER_R = 0.98;
 export const RECORD_R = 0.91;
 /** Height of the record disc plane in model space — reused by the overlay. */
 export const RECORD_Y = 0.0715;
-/** Label radius — must stay in sync with LABEL_OF_DISC in vinylTexture.ts. */
-const LABEL_R = RECORD_R * 0.48;
+/** Label radius — kept in sync with LABEL_OF_DISC in vinylTexture.ts. */
+const LABEL_R = RECORD_R * LABEL_OF_DISC;
+
+const GROOVE_NORMAL_SCALE = new THREE.Vector2(1.1, 1.1);
+const CLEARCOAT_NORMAL_SCALE = new THREE.Vector2(0.45, 0.45);
+
+/** Tangents along concentric grooves so anisotropy + normal maps light correctly. */
+function makeGrooveGeometry(inner: number, outer: number) {
+  const geo = new THREE.RingGeometry(inner, outer, 192, 2);
+  geo.computeTangents();
+  const pos = geo.attributes.position;
+  const tangents = new Float32Array(pos.count * 4);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const len = Math.hypot(x, y) || 1;
+    // Groove direction (CCW) in the ring's XY plane.
+    tangents[i * 4] = -y / len;
+    tangents[i * 4 + 1] = x / len;
+    tangents[i * 4 + 2] = 0;
+    tangents[i * 4 + 3] = 1;
+  }
+  geo.setAttribute("tangent", new THREE.BufferAttribute(tangents, 4));
+  return geo;
+}
+
+const spindleMaterial = new THREE.MeshPhysicalMaterial({
+  color: "#dcd6cc",
+  roughness: 0.16,
+  metalness: 1,
+  clearcoat: 0.45,
+  clearcoatRoughness: 0.12,
+});
 
 /* Shared materials — module-level instances are safe to reuse across meshes. */
 const armMaterial = new THREE.MeshStandardMaterial({
@@ -104,30 +137,32 @@ export function armPoseFor(
 
 const ARM_POSE = armPoseFor(ARM_PIVOT);
 
-function useVinylMap(coverPath: string | null | undefined) {
-  const fallback = useMemo(() => makeVinylTexture(null), []);
+function useVinylLabel(coverPath: string | null | undefined) {
+  const fallback = useMemo(() => makeVinylLabelTexture(null), []);
   const [map, setMap] = useState<THREE.CanvasTexture>(fallback);
 
   useEffect(() => {
     let cancelled = false;
+    let tex: THREE.CanvasTexture | undefined;
     if (!coverPath) {
-      setMap(makeVinylTexture(null));
+      setMap(fallback);
       return;
     }
-    const url = toAssetUrl(coverPath);
-    loadImage(url)
+    loadImage(toAssetUrl(coverPath))
       .then((img) => {
         if (cancelled) return;
-        setMap(makeVinylTexture(img));
+        tex = makeVinylLabelTexture(img);
+        setMap(tex);
       })
       .catch((err) => {
         console.warn("[vinyl] cover load failed", err);
-        if (!cancelled) setMap(makeVinylTexture(null));
+        if (!cancelled) setMap(fallback);
       });
     return () => {
       cancelled = true;
+      tex?.dispose();
     };
-  }, [coverPath]);
+  }, [coverPath, fallback]);
 
   return map;
 }
@@ -140,7 +175,13 @@ export function VinylDisc({
   coverPath: string | null | undefined;
 }) {
   const group = useRef<THREE.Group>(null);
-  const grooveMap = useVinylMap(coverPath);
+  // Depend on the factory so HMR of vinylTexture.ts rebuilds the PBR pack.
+  const grooves = useMemo(() => makeVinylGrooveMaps(), [makeVinylGrooveMaps]);
+  const grooveGeo = useMemo(
+    () => makeGrooveGeometry(LABEL_R - 0.001, RECORD_R),
+    []
+  );
+  const labelMap = useVinylLabel(coverPath);
 
   useFrame((_, dt) => {
     if (!group.current || !playing) return;
@@ -148,48 +189,72 @@ export function VinylDisc({
   });
 
   return (
-    <group ref={group} position={[0, 0.0715, 0]}>
-      {/* Satin translucent side wall (rose-quartz acrylic, openEnded — no caps
-          to z-fight with the label/groove planes stacked just above it) */}
+    <group ref={group} position={[0, RECORD_Y, 0]}>
+      {/* Translucent PVC edge — pale rose-quartz, openEnded so it doesn't
+          z-fight with the label/groove planes stacked just above it. */}
       <mesh castShadow receiveShadow>
-        <cylinderGeometry args={[RECORD_R, RECORD_R, 0.01, 96, 1, true]} />
+        <cylinderGeometry args={[RECORD_R, RECORD_R, 0.013, 128, 1, true]} />
         <meshPhysicalMaterial
-          color="#e89aa8"
-          roughness={0.32}
+          color="#f4c4ce"
+          roughness={0.22}
           metalness={0}
           transparent
-          opacity={0.6}
-          clearcoat={0.25}
-          clearcoatRoughness={0.4}
+          opacity={0.38}
+          clearcoat={0.55}
+          clearcoatRoughness={0.25}
+          specularColor="#fff4f6"
         />
       </mesh>
-      {/* Grooved face — milky satin, grooves read as soft ripples */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
-        <ringGeometry args={[LABEL_R - 0.002, RECORD_R, 96]} />
+      {/* Grooved face — milky translucent PVC with concentric groove sheen. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.0065, 0]}
+        receiveShadow
+        geometry={grooveGeo}
+      >
         <meshPhysicalMaterial
-          map={grooveMap}
-          roughness={0.38}
+          map={grooves.map}
+          normalMap={grooves.normalMap}
+          normalScale={GROOVE_NORMAL_SCALE}
+          roughnessMap={grooves.roughnessMap}
+          roughness={1}
           metalness={0}
           transparent
-          opacity={0.78}
+          opacity={0.52}
           depthWrite={false}
-          clearcoat={0.25}
-          clearcoatRoughness={0.5}
+          clearcoat={0.85}
+          clearcoatRoughness={0.12}
+          clearcoatNormalMap={grooves.normalMap}
+          clearcoatNormalScale={CLEARCOAT_NORMAL_SCALE}
+          iridescence={0.32}
+          iridescenceIOR={1.3}
+          iridescenceThicknessRange={[100, 400]}
+          sheen={0.18}
+          sheenColor="#ffe8ee"
+          sheenRoughness={0.4}
+          specularIntensity={1.2}
+          specularColor="#fffafb"
+          anisotropy={0.92}
+          anisotropyRotation={0}
+          envMapIntensity={1.4}
         />
       </mesh>
-      {/* Center label (album cover / coral fallback rings) — flat print */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0062, 0]}>
-        <circleGeometry args={[LABEL_R, 64]} />
-        <meshPhysicalMaterial
-          map={grooveMap}
-          roughness={0.55}
+      {/* Paper label — matte print, no vinyl sheen. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0072, 0]}>
+        <circleGeometry args={[LABEL_R, 80]} />
+        <meshStandardMaterial
+          map={labelMap}
+          roughness={0.7}
           metalness={0}
-          clearcoat={0.15}
-          clearcoatRoughness={0.5}
-          emissive="#ffffff"
-          emissiveMap={grooveMap}
-          emissiveIntensity={0.06}
+          envMapIntensity={0.22}
         />
+      </mesh>
+      {/* Chrome spindle */}
+      <mesh position={[0, 0.02, 0]} material={spindleMaterial} castShadow>
+        <cylinderGeometry args={[0.016, 0.017, 0.026, 24]} />
+      </mesh>
+      <mesh position={[0, 0.033, 0]} material={spindleMaterial}>
+        <sphereGeometry args={[0.015, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
       </mesh>
     </group>
   );
