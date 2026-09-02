@@ -1,5 +1,11 @@
 import { usePlayerStore } from "../store/playerStore";
-import { toAssetUrl } from "../audio/assetUrl";
+
+function formatTime(sec: number | undefined): string {
+  if (!Number.isFinite(sec) || !sec || sec < 0) return "";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 function IconPlay() {
   return (
@@ -18,12 +24,13 @@ function IconPause() {
   );
 }
 
-/** Floating library panel: albums and tracks over the scene. */
+/** Floating library panel: album name + artist, then tracks. */
 export function TrackList() {
   const albums = usePlayerStore((s) => s.albums);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
   const currentTrackIndex = usePlayerStore((s) => s.currentTrackIndex);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const trackDurations = usePlayerStore((s) => s.trackDurations);
   const selectTrack = usePlayerStore((s) => s.selectTrack);
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
 
@@ -48,34 +55,35 @@ export function TrackList() {
   return (
     <div className="track-list">
       {albums.map((album, albumIndex) => (
-        <div key={album.name} className="track-list-album">
+        <div key={`${album.artist ?? ""}:${album.name}`} className="track-list-album">
           <div className="track-list-album-header">
-            {album.cover ? (
-              <img
-                className="track-list-cover"
-                src={toAssetUrl(album.cover)}
-                alt=""
-                draggable={false}
-              />
-            ) : (
-              <div className="track-list-cover placeholder" aria-hidden />
-            )}
             <div className="track-list-album-name">{album.name}</div>
+            {album.artist ? (
+              <div className="track-list-album-artist">{album.artist}</div>
+            ) : null}
           </div>
           {album.tracks.map((track, trackIndex) => {
             const isCurrent =
               albumIndex === currentAlbumIndex &&
               trackIndex === currentTrackIndex;
+            const dur = formatTime(trackDurations[track.path]);
             return (
               <button
                 key={track.path}
                 className={`track-list-item${isCurrent ? " active" : ""}`}
                 onClick={() => handleClick(albumIndex, trackIndex)}
               >
-                <span className="track-list-item-icon">
-                  {isCurrent && isPlaying ? <IconPause /> : <IconPlay />}
+                <span className="track-list-item-index">
+                  {isCurrent ? (
+                    <span className="track-list-item-icon">
+                      {isPlaying ? <IconPause /> : <IconPlay />}
+                    </span>
+                  ) : (
+                    String(trackIndex + 1).padStart(2, " ")
+                  )}
                 </span>
                 <span className="track-list-item-title">{track.title}</span>
+                {dur ? <span className="track-list-item-time">{dur}</span> : null}
               </button>
             );
           })}

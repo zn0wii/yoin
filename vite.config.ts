@@ -37,7 +37,17 @@ function demoLibraryPlugin(): Plugin {
     return null;
   };
 
-  const scanAlbum = (dir: string, name: string) => {
+  const parseAlbumLabel = (folder: string) => {
+    const i = folder.indexOf(" - ");
+    if (i > 0 && i < folder.length - 3) {
+      const artist = folder.slice(0, i).trim();
+      const title = folder.slice(i + 3).trim();
+      if (artist && title) return { name: title, artist };
+    }
+    return { name: folder, artist: null as string | null };
+  };
+
+  const scanAlbum = (dir: string, folderName: string) => {
     const tracks = fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".mp3"))
@@ -46,7 +56,9 @@ function demoLibraryPlugin(): Plugin {
         path: asFsUrl(path.join(dir, e.name)),
       }))
       .sort((a, b) => a.title.localeCompare(b.title));
-    return tracks.length > 0 ? { name, tracks, cover: findCover(dir) } : null;
+    if (tracks.length === 0) return null;
+    const { name, artist } = parseAlbumLabel(folderName);
+    return { name, artist, tracks, cover: findCover(dir) };
   };
 
   return {

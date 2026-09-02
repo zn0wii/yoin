@@ -1,10 +1,12 @@
 .track-list {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px 8px 14px;
+  overflow-x: hidden;
+  padding: 16px 12px 14px;
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: rgba(180, 120, 90, 0.3) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 
 .track-list::-webkit-scrollbar {
@@ -12,19 +14,19 @@
 }
 
 .track-list::-webkit-scrollbar-thumb {
-  background: rgba(180, 120, 90, 0.3);
+  background: rgba(255, 255, 255, 0.22);
   border-radius: 999px;
 }
 
 .track-list-empty {
   padding: 28px 16px;
-  color: rgba(61, 42, 34, 0.45);
+  color: rgba(247, 241, 234, 0.45);
   font-size: 13px;
   text-align: center;
 }
 
 .track-list-album {
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .track-list-album:last-child {
@@ -33,38 +35,26 @@
 
 .track-list-album-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px 10px;
-}
-
-.track-list-cover {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow:
-    0 2px 8px rgba(60, 36, 18, 0.18),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
-  background: #e8d8cc;
-}
-
-.track-list-cover.placeholder {
-  background: radial-gradient(
-    circle at 50% 45%,
-    #f0c4a8 0 26%,
-    #c45c3e 28% 52%,
-    #8a4a40 54% 100%
-  );
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  height: 48px;
+  padding: 0 10px 8px;
+  box-sizing: border-box;
 }
 
 .track-list-album-name {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #b85a42;
+  font-size: 16px;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+  color: #f7f1ea;
+  line-height: 1.25;
+}
+
+.track-list-album-artist {
+  font-size: 12px;
+  font-weight: 450;
+  color: rgba(247, 241, 234, 0.55);
 }
 
 .track-list-item {
@@ -72,11 +62,13 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 9px 12px;
+  height: 36px;
+  padding: 0 10px;
+  box-sizing: border-box;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
-  color: #3d2a22;
+  color: rgba(247, 241, 234, 0.88);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
@@ -84,33 +76,57 @@
 }
 
 .track-list-item:hover {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .track-list-item.active {
-  background: rgba(255, 255, 255, 0.72);
-  color: #a84a30;
+  background: rgba(232, 176, 182, 0.18);
+  color: #f4c8cc;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(60, 36, 18, 0.06);
 }
 
-.track-list-item-icon {
-  flex: 0 0 18px;
+.track-list-item-index {
+  flex: 0 0 22px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: rgba(247, 241, 234, 0.4);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #c45c3e;
-  opacity: 0.85;
+}
+
+.track-list-item.active .track-list-item-index {
+  color: #f0a8b0;
+}
+
+.track-list-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f0a8b0;
 }
 
 .track-list-item-icon svg {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   fill: currentColor;
 }
 
 .track-list-item-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.track-list-item-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: rgba(247, 241, 234, 0.45);
+}
+
+.track-list-item.active .track-list-item-time {
+  color: rgba(244, 200, 204, 0.8);
 }

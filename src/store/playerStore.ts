@@ -7,6 +7,8 @@ export interface Track {
 
 export interface Album {
   name: string;
+  /** Display artist; optional when the folder name has no "Artist - Title". */
+  artist?: string | null;
   tracks: Track[];
   /** Absolute path (or /demo/…) to cover art, if the folder has one. */
   cover?: string | null;

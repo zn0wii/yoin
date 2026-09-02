@@ -52,20 +52,23 @@ body,
   z-index: 2;
   top: 20px;
   right: 20px;
-  bottom: 100px;
+  bottom: auto;
   left: auto;
-  width: min(252px, calc(100vw - 40px));
+  width: min(268px, calc(100vw - 40px));
+  /* Header + ~10 track rows; extra tracks scroll inside. */
+  height: 438px;
+  max-height: calc(100vh - 128px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: 18px;
-  background: rgba(255, 246, 236, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(18, 14, 12, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow:
-    0 10px 36px rgba(60, 36, 18, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(18px) saturate(1.1);
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+    0 10px 40px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px) saturate(1.08);
+  -webkit-backdrop-filter: blur(8px) saturate(1.08);
 }
 
 @media (max-width: 720px) {
@@ -75,8 +78,8 @@ body,
     top: auto;
     bottom: 128px;
     width: auto;
-    max-height: 26vh;
+    height: auto;
+    max-height: min(438px, 32vh);
     border-radius: 16px;
-    background: rgba(255, 246, 236, 0.78);
   }
 }

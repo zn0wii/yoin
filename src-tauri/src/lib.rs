@@ -16,9 +16,23 @@ struct TrackInfo {
 struct Album {
     /// Display name (folder name, or "Root" for the top-level record).
     name: String,
+    /// Artist if the folder is named `Artist - Title`.
+    artist: Option<String>,
     tracks: Vec<TrackInfo>,
     /// Absolute path to cover art (cover.jpg/png/…), if present in the folder.
     cover: Option<String>,
+}
+
+/// Split `Artist - Title` folder names; otherwise the whole stem is the title.
+fn parse_album_label(folder: &str) -> (String, Option<String>) {
+    if let Some((artist, title)) = folder.split_once(" - ") {
+        let artist = artist.trim();
+        let title = title.trim();
+        if !artist.is_empty() && !title.is_empty() {
+            return (title.to_string(), Some(artist.to_string()));
+        }
+    }
+    (folder.to_string(), None)
 }
 
 /// Resolve the default music directory.
@@ -143,8 +157,10 @@ fn scan_library<R: Runtime>(
             .and_then(|s| s.to_str())
             .unwrap_or("Root")
             .to_string();
+        let (name, artist) = parse_album_label(&name);
         albums.push(Album {
             name,
+            artist,
             tracks: root_tracks,
             cover: find_cover(&root_dir),
         });
@@ -168,8 +184,10 @@ fn scan_library<R: Runtime>(
             .and_then(|s| s.to_str())
             .unwrap_or("Unknown")
             .to_string();
+        let (name, artist) = parse_album_label(&name);
         albums.push(Album {
             name,
+            artist,
             tracks,
             cover: find_cover(&subdir),
         });
