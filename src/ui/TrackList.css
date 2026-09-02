@@ -7,7 +7,7 @@
 
 .track-list-empty {
   padding: 24px 16px;
-  color: rgba(42, 36, 32, 0.4);
+  color: rgba(242, 233, 223, 0.4);
   font-size: 13px;
 }
 
@@ -41,7 +41,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(196, 92, 62, 0.75);
+  color: rgba(255, 176, 138, 0.8);
 }
 
 .track-list-item {
@@ -53,19 +53,19 @@
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #2a2420;
+  color: #e8ddd0;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
 
 .track-list-item:hover {
-  background: rgba(196, 92, 62, 0.08);
+  background: rgba(255, 176, 138, 0.08);
 }
 
 .track-list-item.active {
-  background: rgba(196, 92, 62, 0.14);
-  color: #a84a30;
+  background: rgba(255, 176, 138, 0.16);
+  color: #ffb08a;
   font-weight: 550;
 }
 

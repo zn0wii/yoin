@@ -4,7 +4,7 @@ import { useAudioSync } from "./audio/useAudioSync";
 import { scanLibrary, pickMusicFolder } from "./audio/libraryApi";
 import { TrackList } from "./ui/TrackList";
 import { ControlPanel } from "./ui/ControlPanel";
-import { TurntableCanvas } from "./scene/TurntableCanvas";
+import { VinylStage } from "./scene/VinylStage";
 import "./ui/TrackList.css";
 import "./ui/ControlPanel.css";
 import "./App.css";
@@ -52,7 +52,7 @@ function App() {
         <TrackList />
       </aside>
       <main className="app-main">
-        <TurntableCanvas />
+        <VinylStage />
       </main>
       <ControlPanel onPickFolder={handlePickFolder} />
     </div>

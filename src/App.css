@@ -6,7 +6,7 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #f4efe8;
+  background: #17100a;
 }
 
 .app-root {
@@ -15,16 +15,16 @@ body,
   grid-template-rows: 1fr auto;
   width: 100vw;
   height: 100vh;
-  color: #2a2420;
+  color: #f2e9df;
   font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
 }
 
 .app-sidebar {
   grid-column: 1;
   grid-row: 1;
-  background: rgba(255, 252, 248, 0.88);
-  border-right: 1px solid rgba(40, 30, 20, 0.08);
-  backdrop-filter: blur(12px);
+  background: rgba(24, 17, 12, 0.55);
+  border-right: 1px solid rgba(255, 230, 200, 0.08);
+  backdrop-filter: blur(14px);
   z-index: 2;
 }
 
@@ -33,15 +33,19 @@ body,
   grid-row: 1;
   position: relative;
   min-height: 0;
-  background: #f4efe8;
+  background: #17100a;
 }
 
-.turntable-canvas {
+/* Background-image stage with the transparent 3D record overlay */
+.vinyl-stage {
   position: absolute;
   inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
-.turntable-canvas canvas {
+.vinyl-stage canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
