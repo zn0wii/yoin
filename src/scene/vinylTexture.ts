@@ -30,12 +30,27 @@ function drawGrooves(ctx: CanvasRenderingContext2D, cx: number, cy: number, size
   ctx.arc(cx, cy, size * DISC_R, 0, Math.PI * 2);
   ctx.fill();
 
-  // Fine concentric groove lines in a slightly deeper pink.
-  const inner = size * DISC_R * LABEL_OF_DISC + size * 0.01;
-  for (let r = inner; r < size * DISC_R - 1; r += 1.2) {
-    const a = 0.1 + (Math.sin(r * 0.4) + 1) * 0.045;
-    ctx.strokeStyle = `rgba(197,101,129,${a.toFixed(3)})`;
-    ctx.lineWidth = 0.8;
+  // Dead-wax band just outside the label — slightly desaturated
+  const dw0 = size * DISC_R * LABEL_OF_DISC + size * 0.002;
+  const dw1 = dw0 + size * 0.016;
+  const dw = ctx.createRadialGradient(cx, cy, dw0, cx, cy, dw1);
+  dw.addColorStop(0, "rgba(214,168,176,0.55)");
+  dw.addColorStop(1, "rgba(214,168,176,0)");
+  ctx.fillStyle = dw;
+  ctx.beginPath();
+  ctx.arc(cx, cy, dw1, 0, Math.PI * 2);
+  ctx.arc(cx, cy, dw0, 0, Math.PI * 2, true);
+  ctx.fill();
+
+  // Fine concentric groove rings — subtle ripples, more present in the
+  // outer half where real pressings show them most.
+  const inner = dw1;
+  const outer = size * DISC_R;
+  for (let r = inner; r < outer - 1; r += 1.1) {
+    const t = (r - inner) / (outer - inner); // 0 inner → 1 rim
+    const a = 0.12 + t * 0.07 + (Math.sin(r * 0.4) + 1) * 0.04;
+    ctx.strokeStyle = `rgba(176,88,120,${a.toFixed(3)})`;
+    ctx.lineWidth = 0.9;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();

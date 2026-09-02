@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { usePlayerStore } from "../store/playerStore";
 import {
@@ -127,15 +128,49 @@ export function VinylStage() {
       style={{ backgroundImage: `url(${BG_IMAGE})` }}
     >
       <Canvas
+        shadows="soft"
         dpr={[1, 2]}
         camera={{ position: CAMERA.pos, fov: CAMERA.fov, near: 0.1, far: 30 }}
-        gl={{ antialias: true, alpha: true, toneMappingExposure: 1.1 }}
+        gl={{ antialias: true, alpha: true, toneMappingExposure: 1.08 }}
       >
-        {/* Match the photo's warm key light (upper-left) plus soft fills. */}
-        <ambientLight intensity={0.55} color="#9a8f85" />
-        <directionalLight position={[-2.4, 4, 2.2]} intensity={1.15} color="#ffe3c2" />
-        <directionalLight position={[2.6, 2.2, 1.4]} intensity={0.35} color="#cfa9ff" />
-        <pointLight position={[0, 1.6, 1.2]} intensity={0.22} color="#ffd9bb" distance={6} />
+        {/* Softbox-style key from upper-right: ambient-dominant, low contrast.
+            Casts the arm's soft shadow down-left onto the record. */}
+        <directionalLight
+          castShadow
+          position={[2.6, 4, 1.8]}
+          intensity={1.05}
+          color="#ffe8c8"
+          shadow-mapSize={[1024, 1024]}
+          shadow-radius={6}
+          shadow-bias={-0.0005}
+          shadow-camera-near={1}
+          shadow-camera-far={12}
+          shadow-camera-left={-2.5}
+          shadow-camera-right={2.5}
+          shadow-camera-top={2.5}
+          shadow-camera-bottom={-2.5}
+        />
+        <directionalLight position={[-2.4, 2.6, 1.6]} intensity={0.35} color="#e8b8c8" />
+        <ambientLight intensity={0.6} color="#a89c92" />
+
+        {/* Very low environment intensity — satin materials only need a hint
+            of reflection, no glassy streaks. */}
+        <Environment resolution={64} frames={1}>
+          <Lightformer
+            intensity={1.1}
+            color="#ffe2b8"
+            position={[2.6, 3.2, 1.6]}
+            rotation={[0, -Math.PI / 3, 0]}
+            scale={[3, 3, 1]}
+          />
+          <Lightformer
+            intensity={0.5}
+            color="#ffc8d2"
+            position={[-2.6, 2.2, -1.2]}
+            rotation={[0, Math.PI / 2.4, 0]}
+            scale={[3, 2, 1]}
+          />
+        </Environment>
 
         <OverlayScene />
       </Canvas>

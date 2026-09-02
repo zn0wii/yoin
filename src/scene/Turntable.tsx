@@ -149,46 +149,46 @@ export function VinylDisc({
 
   return (
     <group ref={group} position={[0, 0.0715, 0]}>
-      {/* Sakura-glass side wall (openEnded — no caps to z-fight with the
-          label/groove planes stacked just above it) */}
-      <mesh castShadow>
+      {/* Satin translucent side wall (rose-quartz acrylic, openEnded — no caps
+          to z-fight with the label/groove planes stacked just above it) */}
+      <mesh castShadow receiveShadow>
         <cylinderGeometry args={[RECORD_R, RECORD_R, 0.01, 96, 1, true]} />
         <meshPhysicalMaterial
-          color="#f5afc0"
-          roughness={0.12}
+          color="#e89aa8"
+          roughness={0.32}
           metalness={0}
           transparent
-          opacity={0.55}
-          clearcoat={1}
-          clearcoatRoughness={0.08}
+          opacity={0.6}
+          clearcoat={0.25}
+          clearcoatRoughness={0.4}
         />
       </mesh>
-      {/* Grooved face — pink glass with a clearcoat sheen */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
+      {/* Grooved face — milky satin, grooves read as soft ripples */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
         <ringGeometry args={[LABEL_R - 0.002, RECORD_R, 96]} />
         <meshPhysicalMaterial
           map={grooveMap}
-          roughness={0.14}
-          metalness={0.05}
+          roughness={0.38}
+          metalness={0}
           transparent
-          opacity={0.68}
+          opacity={0.78}
           depthWrite={false}
-          clearcoat={1}
-          clearcoatRoughness={0.1}
+          clearcoat={0.25}
+          clearcoatRoughness={0.5}
         />
       </mesh>
-      {/* Center label (album cover / coral fallback rings) */}
+      {/* Center label (album cover / coral fallback rings) — flat print */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0062, 0]}>
         <circleGeometry args={[LABEL_R, 64]} />
         <meshPhysicalMaterial
           map={grooveMap}
-          roughness={0.35}
-          metalness={0.02}
-          clearcoat={0.6}
-          clearcoatRoughness={0.2}
+          roughness={0.55}
+          metalness={0}
+          clearcoat={0.15}
+          clearcoatRoughness={0.5}
           emissive="#ffffff"
           emissiveMap={grooveMap}
-          emissiveIntensity={0.2}
+          emissiveIntensity={0.06}
         />
       </mesh>
     </group>
