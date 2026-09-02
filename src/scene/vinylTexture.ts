@@ -13,16 +13,29 @@ function labelRadius(size: number) {
 }
 
 function drawGrooves(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
-  ctx.fillStyle = "#121214";
+  // Translucent pink vinyl base — deeper pink near the label, paler at the rim.
+  const base = ctx.createRadialGradient(
+    cx,
+    cy,
+    size * DISC_R * 0.28,
+    cx,
+    cy,
+    size * DISC_R
+  );
+  base.addColorStop(0, "#eb9cb4");
+  base.addColorStop(0.5, "#f4b8ca");
+  base.addColorStop(1, "#fadbe3");
+  ctx.fillStyle = base;
   ctx.beginPath();
   ctx.arc(cx, cy, size * DISC_R, 0, Math.PI * 2);
   ctx.fill();
 
+  // Fine concentric groove lines in a slightly deeper pink.
   const inner = size * DISC_R * LABEL_OF_DISC + size * 0.01;
-  for (let r = inner; r < size * DISC_R - 1; r += 1.55) {
-    const shade = 14 + (Math.sin(r * 0.35) + 1) * 6;
-    ctx.strokeStyle = `rgb(${shade},${shade},${shade + 2})`;
-    ctx.lineWidth = 0.9;
+  for (let r = inner; r < size * DISC_R - 1; r += 1.2) {
+    const a = 0.1 + (Math.sin(r * 0.4) + 1) * 0.045;
+    ctx.strokeStyle = `rgba(197,101,129,${a.toFixed(3)})`;
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
@@ -46,18 +59,18 @@ function drawSpacedText(
   }
 }
 
-/** No-cover fallback: glowing concentric target rings, deep rose → hot pink core. */
+/** No-cover fallback: coral/salmon-pink concentric target rings, rim → warm core. */
 function drawFallbackLabel(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
   const lr = labelRadius(size);
   const stops = [
-    "#7e1f3d",
-    "#a62c50",
-    "#c93a5e",
-    "#e84a6c",
-    "#ff5d7e",
-    "#ff7d94",
-    "#ffa3b3",
-    "#ffc4cd",
+    "#c04a52",
+    "#d35c56",
+    "#e2705e",
+    "#ef8567",
+    "#f99b74",
+    "#ffb28a",
+    "#ffc9a8",
+    "#ffdcc4",
   ];
   for (let i = 0; i < stops.length; i++) {
     ctx.fillStyle = stops[i];
@@ -66,7 +79,7 @@ function drawFallbackLabel(ctx: CanvasRenderingContext2D, cx: number, cy: number
     ctx.fill();
   }
   // Hot core dot + brand mark
-  ctx.fillStyle = "#ffdde3";
+  ctx.fillStyle = "#fff1e4";
   ctx.beginPath();
   ctx.arc(cx, cy, lr * 0.1, 0, Math.PI * 2);
   ctx.fill();
@@ -286,11 +299,11 @@ export function makeVinylTexture(coverImage?: HTMLImageElement | null): THREE.Ca
   }
 
   // Spindle hole
-  ctx.fillStyle = "#0a0a0c";
+  ctx.fillStyle = "#9d5568";
   ctx.beginPath();
   ctx.arc(cx, cy, SIZE * 0.018, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "rgba(180,180,185,0.35)";
+  ctx.strokeStyle = "rgba(255,235,225,0.4)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(cx, cy, SIZE * 0.018, 0, Math.PI * 2);
@@ -313,6 +326,34 @@ export function makeGlowTexture(): THREE.CanvasTexture {
   g.addColorStop(1, "rgba(255,96,136,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 512, 512);
+  return toTexture(canvas);
+}
+
+/**
+ * Frosted acrylic platter face: milky white center fading to pale pink with a
+ * more translucent rim (alpha channel), so the white plinth shows through.
+ */
+export function makePlatterTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+  g.addColorStop(0, "rgba(248,243,240,0.98)");
+  g.addColorStop(0.45, "rgba(247,234,235,0.96)");
+  g.addColorStop(0.8, "rgba(243,216,222,0.88)");
+  g.addColorStop(0.95, "rgba(241,205,214,0.7)");
+  g.addColorStop(1, "rgba(240,199,210,0.5)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 512);
+  // Faint concentral machining rings for the frosted look
+  for (let r = 40; r < 250; r += 14) {
+    ctx.strokeStyle = `rgba(214,170,182,${(0.1 - (r / 250) * 0.06).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(256, 256, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   return toTexture(canvas);
 }
 
