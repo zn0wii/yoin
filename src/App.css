@@ -1,0 +1,73 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f4efe8;
+}
+
+.app-root {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 1fr auto;
+  width: 100vw;
+  height: 100vh;
+  color: #2a2420;
+  font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+}
+
+.app-sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  background: rgba(255, 252, 248, 0.88);
+  border-right: 1px solid rgba(40, 30, 20, 0.08);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+
+.app-main {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  min-height: 0;
+  background: #f4efe8;
+}
+
+.turntable-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.turntable-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (max-width: 720px) {
+  .app-root {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(120px, 28vh) auto;
+  }
+
+  .app-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .app-sidebar {
+    grid-column: 1;
+    grid-row: 2;
+    border-right: none;
+    border-top: 1px solid rgba(40, 30, 20, 0.08);
+    max-height: 28vh;
+  }
+
+  .control-panel {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}
