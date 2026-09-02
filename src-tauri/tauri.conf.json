@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Yoin",
-        "width": 1024,
-        "height": 700,
-        "minWidth": 800,
-        "minHeight": 560
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1200,
+        "minHeight": 760
       }
     ],
     "security": {
