@@ -6,68 +6,87 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #f4efe8;
+  background: #2a1c14;
 }
 
 .app-root {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  grid-template-rows: 1fr auto;
+  position: relative;
   width: 100vw;
   height: 100vh;
-  color: #2a2420;
+  color: #3d2a22;
   font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
 }
 
-.app-sidebar {
-  grid-column: 1;
-  grid-row: 1;
-  background: rgba(255, 252, 248, 0.88);
-  border-right: 1px solid rgba(40, 30, 20, 0.08);
-  backdrop-filter: blur(12px);
-  z-index: 2;
-}
-
+/* Full-bleed scene — design.png room fills the window */
 .app-main {
-  grid-column: 2;
-  grid-row: 1;
-  position: relative;
-  min-height: 0;
-  background: #f4efe8;
-}
-
-.turntable-canvas {
   position: absolute;
   inset: 0;
+  z-index: 0;
+  background: transparent;
 }
 
-.turntable-canvas canvas {
+.vinyl-stage {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.vinyl-stage canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+  background: transparent;
+  /* Keep the WebGL layer off the player bar so backdrop-filter
+     samples the room photo instead of an opaque canvas compositor. */
+  clip-path: inset(0 0 96px 0);
+}
+
+/*
+ * Track library — floats on the empty warm wall (right), so the left plant
+ * + candle composition from design.png stays visible.
+ */
+.app-sidebar {
+  position: absolute;
+  z-index: 2;
+  top: 20px;
+  right: 20px;
+  bottom: auto;
+  left: auto;
+  width: min(268px, calc(100vw - 40px));
+  /* Header + ~10 track rows; extra tracks scroll inside. */
+  height: 438px;
+  max-height: calc(100vh - 128px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgba(18, 14, 12, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px) saturate(1.08);
+  -webkit-backdrop-filter: blur(8px) saturate(1.08);
 }
 
 @media (max-width: 720px) {
   .app-root {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(120px, 28vh) auto;
-  }
-
-  .app-main {
-    grid-column: 1;
-    grid-row: 1;
+    --ui-inset: 12px;
+    --nav-w: 120px;
+    --player-space: 96px;
+    --tracks-h: 34vh;
   }
 
   .app-sidebar {
-    grid-column: 1;
-    grid-row: 2;
-    border-right: none;
-    border-top: 1px solid rgba(40, 30, 20, 0.08);
-    max-height: 28vh;
-  }
-
-  .control-panel {
-    grid-column: 1;
-    grid-row: 3;
+    left: var(--ui-inset);
+    right: var(--ui-inset);
+    top: auto;
+    bottom: var(--player-space);
+    width: auto;
+    height: var(--tracks-h);
+    max-height: var(--tracks-h);
+    border-radius: 16px;
   }
 }

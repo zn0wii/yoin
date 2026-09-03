@@ -1,0 +1,315 @@
+.album-shelf-wrap {
+  position: absolute;
+  z-index: 2;
+  left: 176px;
+  right: 300px;
+  top: 48px;
+  height: auto;
+  pointer-events: none;
+}
+
+.album-shelf {
+  height: auto;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  pointer-events: auto;
+}
+
+.album-shelf::-webkit-scrollbar {
+  height: 6px;
+}
+
+.album-shelf::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+.album-page {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(132px, 1fr));
+  grid-template-rows: auto auto;
+  align-content: start;
+  gap: 14px 18px;
+  /* Head-room so the hover lift on the cover isn't clipped by the
+     scroll container (overflow-y computes to auto next to overflow-x). */
+  padding: 10px 10px 4px 10px;
+  box-sizing: border-box;
+}
+
+.album-shelf-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  color: rgba(247, 241, 234, 0.55);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.album-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px 10px 8px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: none;
+  color: #f7f1ea;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  min-width: 0;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+/* Lifted card paints over its neighbours in the grid. */
+.album-card:hover {
+  z-index: 5;
+}
+
+.album-art {
+  position: relative;
+  width: 100%;
+  max-width: 148px;
+  aspect-ratio: 1.32;
+  flex: 0 0 auto;
+}
+
+/* Disc sits behind the jacket; about a third of it peeks past the right edge.
+   --vinyl-body / --vinyl-label are set from the cover's dominant color
+   (see coverColor.ts); these are the neutral fallbacks. */
+.album-vinyl {
+  --vinyl-body: #1a1a1c;
+  --vinyl-label: #3d3d42;
+  position: absolute;
+  left: 27.5%;
+  top: 4%;
+  width: 70%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(12, 8, 9, 0.78) 0 7%, transparent 7.4%),
+    radial-gradient(circle at 50% 50%, var(--vinyl-label) 0 16%, transparent 16.5%),
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.08) 0 0.6px,
+      transparent 0.6px 2.4px
+    ),
+    radial-gradient(circle at 42% 38%, rgba(255, 255, 255, 0.14), transparent 42%),
+    var(--vinyl-body);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.album-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 74%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    0 10px 26px rgba(0, 0, 0, 0.42);
+  transition:
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.album-cover.placeholder {
+  background: linear-gradient(145deg, #5a3a36, #2a1c1a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9%;
+  box-sizing: border-box;
+}
+
+/* No-cover jacket: the album (folder) name printed on the sleeve. */
+.album-cover-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: rgba(247, 241, 234, 0.85);
+  overflow-wrap: break-word;
+}
+
+/* Hover: the jacket floats forward (up + toward the viewer) while the disc
+   nudges further out so the reveal isn't swallowed by the scaled cover. */
+.album-card:hover .album-cover {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.32),
+    0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+.album-card:hover .album-vinyl {
+  transform: translateX(4.5%);
+}
+
+.album-card-title {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  max-width: 78%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-card-artist {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgba(247, 241, 234, 0.55);
+  max-width: 78%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .album-shelf-wrap {
+    left: 168px;
+    right: 24px;
+  }
+}
+
+/* Positions the page arrows over the shelf edges (the wrap itself is the
+   absolute anchor; the dots below stay in normal flow). */
+.album-shelf-area {
+  position: relative;
+}
+
+/* Page arrows — small glass circles like the rest of the chrome. */
+.shelf-nav {
+  position: absolute;
+  top: 42%;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(26, 17, 17, 0.55);
+  backdrop-filter: blur(8px);
+  color: rgba(247, 241, 234, 0.85);
+  cursor: pointer;
+  padding: 0;
+  pointer-events: auto;
+  transition:
+    background 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.shelf-nav:hover {
+  background: rgba(46, 28, 28, 0.78);
+}
+
+.shelf-nav:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.shelf-nav.prev {
+  left: -8px;
+}
+
+.shelf-nav.next {
+  right: -8px;
+}
+
+/* Page dots under the shelf. */
+.shelf-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px 0 2px;
+  pointer-events: auto;
+}
+
+.shelf-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(247, 241, 234, 0.26);
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    width 0.18s ease;
+}
+
+.shelf-dot:hover {
+  background: rgba(247, 241, 234, 0.5);
+}
+
+.shelf-dot.active {
+  width: 16px;
+  background: rgba(247, 241, 234, 0.85);
+}
+
+@media (max-width: 720px) {
+  .album-shelf-wrap {
+    left: calc(var(--ui-inset, 12px) + var(--nav-w, 120px));
+    right: var(--ui-inset, 12px);
+    top: 12px;
+    bottom: calc(var(--player-space, 96px) + 8px);
+    width: auto;
+    height: auto;
+  }
+
+  .app-root.tracks-open .album-shelf-wrap {
+    bottom: calc(var(--player-space, 96px) + var(--tracks-h, 34vh) + 10px);
+  }
+
+  /* Mobile shelves scroll vertically page by page — arrows/dots don't apply. */
+  .shelf-nav,
+  .shelf-dots {
+    display: none;
+  }
+
+  .album-shelf {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-snap-type: y proximity;
+  }
+
+  .album-page {
+    flex: 0 0 auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    gap: 10px;
+    padding: 0 2px 8px;
+  }
+
+  .album-card {
+    padding: 4px;
+  }
+}

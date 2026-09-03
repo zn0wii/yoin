@@ -18,11 +18,35 @@ class AudioEngine {
   private listeners = new Set<Listener>();
   private endedListeners = new Set<Listener>();
   private loadedPath: string | null = null;
+  /** Playback window [start, end) in file-absolute seconds — CUE tracks
+   *  share one file, so playback is clipped to the current track's span. */
+  private windowStart = 0;
+  private windowEnd = Number.POSITIVE_INFINITY;
 
   constructor() {
     this.audio = new Audio();
     this.audio.preload = "auto";
-    this.audio.addEventListener("timeupdate", () => this.emit());
+    this.audio.volume = 0.8;
+    // The asset protocol (convertFileSrc) is served from a different origin
+    // than the page (e.g. http://asset.localhost vs https://tauri.localhost on
+    // Windows), so the media must be fetched in CORS mode — otherwise it is
+    // treated as tainted and createMediaElementSource feeds silence into the
+    // graph (playback advances but nothing is heard). Tauri's asset protocol
+    // echoes the window origin in Access-Control-Allow-Origin, which is
+    // exactly what anonymous CORS mode needs.
+    this.audio.crossOrigin = "anonymous";
+    this.audio.addEventListener("timeupdate", () => {
+      // Mid-file track end (CUE): emulate the native "ended" event at the
+      // window boundary so the store advances to the next track.
+      if (
+        Number.isFinite(this.windowEnd) &&
+        this.audio.currentTime >= this.windowEnd - 0.02
+      ) {
+        this.audio.pause();
+        this.endedListeners.forEach((l) => l());
+      }
+      this.emit();
+    });
     this.audio.addEventListener("loadedmetadata", () => this.emit());
     this.audio.addEventListener("ended", () => {
       this.emit();
@@ -56,9 +80,15 @@ class AudioEngine {
     this.listeners.forEach((l) => l());
   }
 
+  /** Clip playback (and the seek/time views below) to [start, end). */
+  setWindow(start: number, end: number) {
+    this.windowStart = Math.max(0, start);
+    this.windowEnd = Math.max(this.windowStart, end);
+  }
+
   async load(filePath: string) {
     if (this.loadedPath === filePath && this.audio.src) {
-      this.audio.currentTime = 0;
+      this.audio.currentTime = this.windowStart;
       return;
     }
     const url = toAssetUrl(filePath);
@@ -81,7 +111,7 @@ class AudioEngine {
       this.audio.load();
     });
     this.loadedPath = filePath;
-    this.audio.currentTime = 0;
+    this.audio.currentTime = this.windowStart;
   }
 
   async play() {
@@ -97,24 +127,50 @@ class AudioEngine {
   }
 
   seek(seconds: number) {
-    const clamped = Math.max(0, Math.min(seconds, this.audio.duration || seconds));
-    this.audio.currentTime = clamped;
+    const dur = this.duration;
+    const target = this.windowStart + Math.max(0, Math.min(seconds, dur));
+    const fileDur = this.audio.duration;
+    this.audio.currentTime = Number.isFinite(fileDur)
+      ? Math.min(target, fileDur)
+      : target;
   }
 
   seekBy(deltaSeconds: number) {
-    this.seek(this.audio.currentTime + deltaSeconds);
+    this.seek(this.currentTime + deltaSeconds);
   }
 
+  /** Position within the current track (window-relative). */
   get currentTime() {
-    return this.audio.currentTime || 0;
+    return Math.max(0, (this.audio.currentTime || 0) - this.windowStart);
   }
 
+  /** Duration of the current track (window clipped to the file). */
   get duration() {
-    return this.audio.duration || 0;
+    const fileDur = this.audio.duration || 0;
+    const end = Number.isFinite(this.windowEnd)
+      ? Math.min(this.windowEnd, fileDur || this.windowEnd)
+      : fileDur;
+    return Math.max(0, end - this.windowStart);
+  }
+
+  /** Raw duration of the loaded file, unclipped by the track window
+   *  (0 while unknown) — used to derive CUE sibling durations. */
+  get fileDuration() {
+    const d = this.audio.duration;
+    return Number.isFinite(d) && d > 0 ? d : 0;
   }
 
   get paused() {
     return this.audio.paused;
+  }
+
+  get volume() {
+    return this.audio.volume;
+  }
+
+  setVolume(value: number) {
+    this.audio.volume = Math.min(1, Math.max(0, value));
+    this.emit();
   }
 
   /** Average amplitude in [0, 1] for the current frame, or 0 if not playing. */

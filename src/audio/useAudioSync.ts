@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { audioEngine } from "./audioEngine";
-import { probeDuration } from "./probeDuration";
+import { trackKey, trackWindow } from "./albumProgress";
+import {
+  deriveTrackDurations,
+  useAlbumDurations,
+} from "./useAlbumDurations";
 
 /**
  * Bridges the audioEngine singleton with the zustand store:
@@ -28,30 +32,21 @@ export function useAudioSync() {
   const currentTrack = currentAlbum?.tracks[currentTrackIndex];
 
   // Probe durations for the whole album so stylus can travel outer → inner.
-  useEffect(() => {
-    if (!currentAlbum) return;
-    let cancelled = false;
-    (async () => {
-      for (const track of currentAlbum.tracks) {
-        if (cancelled) return;
-        if (usePlayerStore.getState().trackDurations[track.path]) continue;
-        try {
-          const d = await probeDuration(track.path);
-          if (!cancelled && d > 0) setTrackDuration(track.path, d);
-        } catch (err) {
-          console.warn("[audio] duration probe failed", track.path, err);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentAlbum, setTrackDuration]);
+  useAlbumDurations(currentAlbum);
 
-  // Load the current track whenever it changes.
+  // Load the current track whenever it changes. CUE tracks may share one
+  // file — switching between them just moves the playback window.
   useEffect(() => {
-    if (!currentTrack || !hasSelection) return;
-    if (loadedPathRef.current === currentTrack.path) return;
+    if (!currentTrack || !hasSelection || !currentAlbum) return;
+    const { start, end } = trackWindow(currentAlbum, currentTrackIndex);
+    audioEngine.setWindow(start, end);
+    if (loadedPathRef.current === currentTrack.path) {
+      audioEngine.seek(0);
+      if (usePlayerStore.getState().isPlaying) {
+        audioEngine.play().catch(() => setIsPlaying(false));
+      }
+      return;
+    }
     const path = currentTrack.path;
     loadedPathRef.current = path;
     let cancelled = false;
@@ -60,7 +55,7 @@ export function useAudioSync() {
         await audioEngine.load(path);
         if (cancelled) return;
         const d = audioEngine.duration;
-        if (d > 0) setTrackDuration(path, d);
+        if (d > 0) setTrackDuration(trackKey(currentTrack), d);
         if (usePlayerStore.getState().isPlaying) {
           await audioEngine.play();
         }
@@ -72,7 +67,7 @@ export function useAudioSync() {
     return () => {
       cancelled = true;
     };
-  }, [currentTrack, hasSelection, setIsPlaying, setTrackDuration]);
+  }, [currentTrack, currentTrackIndex, hasSelection, setIsPlaying, setTrackDuration]);
 
   // React to play/pause intent.
   useEffect(() => {
@@ -94,8 +89,16 @@ export function useAudioSync() {
       const t = audioEngine.currentTime;
       const d = audioEngine.duration;
       setTime(t, d);
-      const path = loadedPathRef.current;
-      if (path && d > 0) setTrackDuration(path, d);
+      const s = usePlayerStore.getState();
+      const album = s.albums[s.currentAlbumIndex];
+      const track = album?.tracks[s.currentTrackIndex];
+      if (track && d > 0) setTrackDuration(trackKey(track), d);
+      // The real file duration is now known — heal any sibling CUE tracks
+      // whose durations couldn't be derived during the metadata probe.
+      const fileDur = audioEngine.fileDuration;
+      if (album && track && fileDur > 0) {
+        deriveTrackDurations(album, track.path, fileDur);
+      }
     });
   }, [setTime, setTrackDuration]);
 
