@@ -70,10 +70,6 @@
   pointer-events: auto;
 }
 
-.album-card.selected {
-  border-color: rgba(232, 176, 182, 0.7);
-}
-
 /* Lifted card paints over its neighbours in the grid. */
 .album-card:hover {
   z-index: 5;
