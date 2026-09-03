@@ -1,5 +1,19 @@
 import { create } from "zustand";
 
+/** Main-stage background images (served from /public), cycled by the nav switcher. */
+export const BACKGROUNDS = ["/bg.png", "/bg2.png", "/bg3.png"];
+
+const BACKGROUND_KEY = "yoin:background";
+
+function loadBackgroundIndex(): number {
+  try {
+    const v = Number(localStorage.getItem(BACKGROUND_KEY));
+    return Number.isInteger(v) && v >= 0 && v < BACKGROUNDS.length ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export interface Track {
   title: string;
   path: string;
@@ -44,9 +58,13 @@ interface PlayerState {
   browseAlbumIndex: number;
   /** Online search panel is visible (mutually exclusive with the track panel). */
   searchOpen: boolean;
+  /** Index into BACKGROUNDS for the main-stage background. */
+  backgroundIndex: number;
 
   setAlbums: (albums: Album[], musicDir: string | null) => void;
   toggleSearch: () => void;
+  /** Cycle to the next background image (bg → bg2 → bg3 → bg). */
+  cycleBackground: () => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setIsPlaying: (playing: boolean) => void;
@@ -74,6 +92,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   libraryOpen: true,
   browseAlbumIndex: -1,
   searchOpen: false,
+  backgroundIndex: loadBackgroundIndex(),
 
   setAlbums: (albums, musicDir) =>
     set({
@@ -112,6 +131,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   toggleLibrary: () => set({ libraryOpen: !get().libraryOpen, searchOpen: false }),
   toggleSearch: () => set({ searchOpen: !get().searchOpen, libraryOpen: false }),
+  cycleBackground: () => {
+    const next = (get().backgroundIndex + 1) % BACKGROUNDS.length;
+    try {
+      localStorage.setItem(BACKGROUND_KEY, String(next));
+    } catch {
+      // Private mode / storage disabled — switching still works for the session.
+    }
+    set({ backgroundIndex: next });
+  },
   browseAlbum: (albumIndex) => {
     const album = get().albums[albumIndex];
     if (!album) return;

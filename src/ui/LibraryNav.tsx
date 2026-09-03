@@ -1,4 +1,4 @@
-import { usePlayerStore } from "../store/playerStore";
+import { BACKGROUNDS, usePlayerStore } from "../store/playerStore";
 
 function IconVinyl() {
   return (
@@ -32,6 +32,32 @@ function IconSearch() {
   );
 }
 
+function IconImage() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden>
+      <rect
+        x="3"
+        y="4"
+        width="14"
+        height="12"
+        rx="2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M3.6 13.4l3.4-3.4 3 3 2.4-2.4 4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="7.3" cy="7.7" r="1.15" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function LibraryNav({
   onPickFolder,
 }: {
@@ -42,6 +68,8 @@ export function LibraryNav({
   const searchOpen = usePlayerStore((s) => s.searchOpen);
   const toggleSearch = usePlayerStore((s) => s.toggleSearch);
   const isLoading = usePlayerStore((s) => s.isLoading);
+  const backgroundIndex = usePlayerStore((s) => s.backgroundIndex);
+  const cycleBackground = usePlayerStore((s) => s.cycleBackground);
 
   return (
     <nav className="library-nav">
@@ -60,6 +88,16 @@ export function LibraryNav({
       >
         <IconSearch />
         <span>搜索</span>
+      </button>
+      <button
+        className="library-nav-item"
+        onClick={cycleBackground}
+        title="切换主界面背景"
+      >
+        <IconImage />
+        <span>
+          背景 {backgroundIndex + 1}/{BACKGROUNDS.length}
+        </span>
       </button>
       <button
         className="library-nav-item"

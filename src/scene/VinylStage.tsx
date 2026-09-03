@@ -1,8 +1,8 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
-import { usePlayerStore } from "../store/playerStore";
+import { BACKGROUNDS, usePlayerStore } from "../store/playerStore";
 import {
   RECORD_R,
   RECORD_Y,
@@ -16,8 +16,8 @@ import {
  * the DISPLAYED image (not the container — the image is `cover`-cropped).
  * Anchored to the machine in the photo (white deck center x≈43%, top edge
  * y≈45%): the disc hovers over the deck's upper half.
+ * All backgrounds share the same composition, so one target fits them all.
  */
-const BG_IMAGE = "/bg.png";
 const BG_ASPECT = 1672 / 941;
 const BG_TARGET = { x: 0.51, y: 0.64, r: 0.2 };
 
@@ -133,10 +133,20 @@ function OverlayScene() {
  * transparent 3D canvas overlays just the spinning record + tonearm.
  */
 export function VinylStage() {
+  const backgroundIndex = usePlayerStore((s) => s.backgroundIndex);
+  const bgImage = BACKGROUNDS[backgroundIndex] ?? BACKGROUNDS[0];
+
+  // Warm the other backgrounds so the first switch is instant, not a flash.
+  useEffect(() => {
+    for (const bg of BACKGROUNDS) {
+      if (bg !== bgImage) new Image().src = bg;
+    }
+  }, [bgImage]);
+
   return (
     <div
       className="vinyl-stage"
-      style={{ backgroundImage: `url(${BG_IMAGE})` }}
+      style={{ backgroundImage: `url(${bgImage})` }}
     >
       <Canvas
         shadows="soft"
