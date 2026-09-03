@@ -14,9 +14,7 @@
       {
         "title": "Yoin",
         "width": 1280,
-        "height": 800,
-        "minWidth": 1200,
-        "minHeight": 760
+        "height": 800
       }
     ],
     "security": {
