@@ -38,9 +38,9 @@ body,
   width: 100% !important;
   height: 100% !important;
   background: transparent;
-  /* Keep the WebGL layer off the player bar so backdrop-filter
-     samples the room photo instead of an opaque canvas compositor. */
-  clip-path: inset(0 0 96px 0);
+  /* The canvas runs full-height: where it meets the player bar, the bar's
+     backdrop-filter blurs the record + room photo together, so the glass
+     reads as one continuous layer instead of a hard clip through the disc. */
 }
 
 /*
