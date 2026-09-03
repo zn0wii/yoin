@@ -58,6 +58,12 @@
 
 .player-cover.placeholder {
   background: linear-gradient(145deg, #5a3a36, #2a1c1a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(247, 241, 234, 0.6);
 }
 
 .player-meta {

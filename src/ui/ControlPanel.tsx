@@ -214,7 +214,9 @@ export function ControlPanel({ onPickFolder }: ControlPanelProps) {
         {cover ? (
           <img className="player-cover" src={cover} alt="" draggable={false} />
         ) : (
-          <div className="player-cover placeholder" aria-hidden />
+          <div className="player-cover placeholder" aria-hidden>
+            {album?.name?.trim().charAt(0) || ""}
+          </div>
         )}
         <div className="player-meta">
           <div className="player-title">{track ? track.title : "Select a track"}</div>

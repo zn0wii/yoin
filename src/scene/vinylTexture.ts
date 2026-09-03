@@ -327,6 +327,184 @@ function drawFallbackLabel(ctx: CanvasRenderingContext2D, size: number) {
   }
 }
 
+/* --- no-cover typography: print the album (folder) name on the label ------ */
+
+const LABEL_INK = "rgba(46, 30, 32, 0.85)";
+const LABEL_FONT = `"SF Pro Text", "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`;
+
+/** Characters that may wrap between any two instances (CJK, kana, Hangul,
+ *  fullwidth punctuation). Latin runs stay unbreakable words. */
+function isBreakableChar(ch: string): boolean {
+  const cp = ch.codePointAt(0) ?? 0;
+  return (
+    (cp >= 0x2e80 && cp <= 0x9fff) || // CJK blocks
+    (cp >= 0xac00 && cp <= 0xd7af) || // Hangul
+    (cp >= 0xf900 && cp <= 0xfaff) || // CJK compat ideographs
+    (cp >= 0xff00 && cp <= 0xffef) // fullwidth forms
+  );
+}
+
+/** Split into wrap atoms: latin words whole, CJK per character. */
+function tokenizeLabel(text: string): string[] {
+  const tokens: string[] = [];
+  let word = "";
+  const flush = () => {
+    if (word) tokens.push(word);
+    word = "";
+  };
+  for (const ch of text) {
+    if (/\s/.test(ch)) {
+      flush();
+    } else if (isBreakableChar(ch)) {
+      flush();
+      tokens.push(ch);
+    } else {
+      word += ch;
+    }
+  }
+  flush();
+  return tokens;
+}
+
+/** Join two atoms without a space when either side is CJK. */
+function joinAtoms(a: string, b: string): string {
+  const aBreak = isBreakableChar(a[a.length - 1] ?? "");
+  const bBreak = isBreakableChar(b[0] ?? "");
+  return aBreak || bBreak ? a + b : `${a} ${b}`;
+}
+
+/** Greedy wrap at the ctx's current font; one atom per overflow step. */
+function wrapLabelLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  const tokens = tokenizeLabel(text);
+  if (tokens.length === 0) return [];
+  const lines: string[] = [];
+  let line = tokens[0];
+  for (let i = 1; i < tokens.length; i++) {
+    const joined = joinAtoms(line, tokens[i]);
+    if (ctx.measureText(joined).width <= maxWidth) {
+      line = joined;
+    } else {
+      lines.push(line);
+      line = tokens[i];
+    }
+  }
+  lines.push(line);
+  return lines;
+}
+
+/** Shrink from maxSize until the text fits `maxLines`; hard-clamp as a last resort. */
+function fitLabelLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+  maxSize: number,
+  minSize: number
+): { size: number; lines: string[] } {
+  for (let size = maxSize; size >= minSize; size -= 2) {
+    ctx.font = `600 ${size}px ${LABEL_FONT}`;
+    const lines = wrapLabelLines(ctx, text, maxWidth);
+    if (lines.length <= maxLines) return { size, lines };
+  }
+  ctx.font = `600 ${minSize}px ${LABEL_FONT}`;
+  return {
+    size: minSize,
+    lines: wrapLabelLines(ctx, text, maxWidth).slice(0, maxLines),
+  };
+}
+
+/** Single line that never exceeds maxWidth: shrink, then ellipsize. */
+function fitLabelLine(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  size: number,
+  weight = "500"
+): string {
+  ctx.font = `${weight} ${size}px ${LABEL_FONT}`;
+  let out = text;
+  while (
+    out.length > 1 &&
+    ctx.measureText(`${out}…`).width > maxWidth &&
+    size > 14
+  ) {
+    size -= 1;
+    ctx.font = `${weight} ${size}px ${LABEL_FONT}`;
+  }
+  while (out.length > 1 && ctx.measureText(`${out}…`).width > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return out === text ? out : `${out}…`;
+}
+
+/**
+ * Print the album (folder) name + artist over the fallback target so a
+ * cover-less folder still reads as "its own record". Title block is
+ * bottom-anchored above the spindle hole, artist + rpm mark below it.
+ */
+function drawFallbackTitle(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  title?: string | null,
+  artist?: string | null
+) {
+  const clean = (s?: string | null) => (s ?? "").trim().replace(/\s+/g, " ");
+  const name = clean(title);
+  const who = clean(artist);
+  if (!name && !who) return;
+
+  const cx = size / 2;
+  const maxW = size * 0.6;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = LABEL_INK;
+
+  if (name) {
+    const { size: fontPx, lines } = fitLabelLines(
+      ctx,
+      name,
+      maxW,
+      3,
+      Math.round(size * 0.062),
+      Math.round(size * 0.03)
+    );
+    const lineH = fontPx * 1.22;
+    // Bottom edge stays clear of the spindle hole (r ≈ 0.038·size).
+    let y = size * 0.445 - (lines.length - 0.5) * lineH;
+    ctx.font = `600 ${fontPx}px ${LABEL_FONT}`;
+    const ls = fontPx * 0.03;
+    ctx.letterSpacing = `${ls}px`;
+    for (const line of lines) {
+      // Trailing letter-space is counted in the glyph run — nudge back half.
+      ctx.fillText(line, cx + ls / 2, y);
+      y += lineH;
+    }
+    ctx.letterSpacing = "0px";
+  }
+
+  if (who) {
+    const fontPx = Math.round(size * 0.028);
+    ctx.font = `500 ${fontPx}px ${LABEL_FONT}`;
+    const ls = fontPx * 0.16;
+    ctx.letterSpacing = `${ls}px`;
+    ctx.fillStyle = "rgba(46, 30, 32, 0.62)";
+    ctx.fillText(fitLabelLine(ctx, who.toUpperCase(), maxW, fontPx), cx + ls / 2, size * 0.63);
+    ctx.letterSpacing = "0px";
+  }
+
+  ctx.font = `500 ${Math.round(size * 0.02)}px ${LABEL_FONT}`;
+  ctx.letterSpacing = `${size * 0.004}px`;
+  ctx.fillStyle = "rgba(46, 30, 32, 0.5)";
+  ctx.fillText("33⅓ RPM · LONG PLAY", cx + size * 0.002, size * 0.78);
+  ctx.letterSpacing = "0px";
+  ctx.restore();
+}
+
 function drawCoverLabel(
   ctx: CanvasRenderingContext2D,
   size: number,
@@ -410,9 +588,12 @@ function toCanvasTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   return tex;
 }
 
-/** Paper label that fills CircleGeometry's 0–1 UV (square canvas, circular art). */
+/** Paper label that fills CircleGeometry's 0–1 UV (square canvas, circular art).
+ *  Without a cover, prints the album (folder) name on the fallback target. */
 export function makeVinylLabelTexture(
-  coverImage?: HTMLImageElement | null
+  coverImage?: HTMLImageElement | null,
+  fallbackTitle?: string | null,
+  fallbackArtist?: string | null
 ): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = LABEL_SIZE;
@@ -423,6 +604,7 @@ export function makeVinylLabelTexture(
     drawCoverLabel(ctx, LABEL_SIZE, coverImage);
   } else {
     drawFallbackLabel(ctx, LABEL_SIZE);
+    drawFallbackTitle(ctx, LABEL_SIZE, fallbackTitle, fallbackArtist);
   }
   drawLabelRim(ctx, LABEL_SIZE);
   drawSpindleHole(ctx, LABEL_SIZE);
