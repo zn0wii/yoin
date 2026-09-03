@@ -157,13 +157,25 @@ fn list_dirs(path: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(dirs)
 }
 
+/// Album artwork: search `dir`, then its (cd) subfolders.
+fn album_cover(dir: &Path) -> Option<String> {
+    find_cover(dir).or_else(|| {
+        list_dirs(dir)
+            .ok()
+            .and_then(|subs| subs.into_iter().find_map(|sub| find_cover(&sub)))
+    })
+}
+
 /// Scan a music library directory (or the default one when `dir` is None).
 ///
-/// Layout: `root/artist/album/<audio files>`, optionally one level deeper for
-/// multi-disc albums (`album/cd1`, `album/cd2`). Artwork is searched in the
-/// album folder first, then its subfolders. The whole tree is allow-listed on
-/// the asset protocol scope so the frontend can stream files via
-/// `convertFileSrc`.
+/// Two layouts share the root, told apart by whether the first-level folder
+/// holds audio files directly:
+/// - `root/artist/album/<audio>` (optionally one level deeper for multi-disc
+///   `album/cd1`, `album/cd2`) — artist inferred from the folder name;
+/// - flat `root/album/<audio>` — the folder is the album itself.
+/// Artwork is searched in the album folder first, then its subfolders. The
+/// whole tree is allow-listed on the asset protocol scope so the frontend can
+/// stream files via `convertFileSrc`.
 #[tauri::command]
 fn scan_library<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -183,23 +195,34 @@ fn scan_library<R: Runtime>(
         .map_err(|e| format!("failed to allow asset scope: {e}"))?;
 
     let mut albums = Vec::new();
-    for artist_dir in list_dirs(&root_dir)? {
-        let artist = dir_name(&artist_dir);
-        for album_dir in list_dirs(&artist_dir)? {
+    for first_dir in list_dirs(&root_dir)? {
+        // Flat layout: audio files directly in the first-level folder make it
+        // an album (multi-disc subfolders still merge in), artist unknown.
+        if !collect_audio_files(&first_dir)?.is_empty() {
+            let tracks = collect_tracks(&first_dir)?;
+            if tracks.is_empty() {
+                continue;
+            }
+            albums.push(Album {
+                name: dir_name(&first_dir),
+                artist: None,
+                tracks,
+                cover: album_cover(&first_dir),
+            });
+            continue;
+        }
+
+        let artist = dir_name(&first_dir);
+        for album_dir in list_dirs(&first_dir)? {
             let tracks = collect_tracks(&album_dir)?;
             if tracks.is_empty() {
                 continue;
             }
-            let cover = find_cover(&album_dir).or_else(|| {
-                list_dirs(&album_dir)
-                    .ok()
-                    .and_then(|subs| subs.into_iter().find_map(|sub| find_cover(&sub)))
-            });
             albums.push(Album {
                 name: dir_name(&album_dir),
                 artist: Some(artist.clone()),
                 tracks,
-                cover,
+                cover: album_cover(&album_dir),
             });
         }
     }

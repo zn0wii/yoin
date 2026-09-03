@@ -75,7 +75,11 @@ function demoLibraryPlugin(): Plugin {
       .map((e) => e.name)
       .sort();
 
-  const scanAlbum = (dir: string, albumName: string, artist: string) => {
+  const scanAlbum = (
+    dir: string,
+    albumName: string,
+    artist: string | null
+  ) => {
     // Multi-disc layouts: album/cd1, album/cd2 — own files first, then each
     // subfolder in name order so disc order is preserved.
     const tracks = [...collectAudio(dir)];
@@ -105,13 +109,20 @@ function demoLibraryPlugin(): Plugin {
       server.middlewares.use("/demo-library.json", (_req, res) => {
         try {
           const albums: unknown[] = [];
-          for (const artist of listDirs(musicDir)) {
-            const artistDir = path.join(musicDir, artist);
-            for (const album of listDirs(artistDir)) {
+          for (const first of listDirs(musicDir)) {
+            const firstDir = path.join(musicDir, first);
+            // Flat layout: audio files directly in the first-level folder
+            // make it an album itself; otherwise it's an artist folder.
+            if (collectAudio(firstDir).length > 0) {
+              const hit = scanAlbum(firstDir, first, null);
+              if (hit) albums.push(hit);
+              continue;
+            }
+            for (const album of listDirs(firstDir)) {
               const hit = scanAlbum(
-                path.join(artistDir, album),
+                path.join(firstDir, album),
                 album,
-                artist
+                first
               );
               if (hit) albums.push(hit);
             }
