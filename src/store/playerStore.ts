@@ -14,6 +14,10 @@ export interface Album {
   tracks: Track[];
   /** Absolute path (or /demo/…) to cover art, if the folder has one. */
   cover?: string | null;
+  /** NetEase album id, set only for the online-search virtual album — lets
+   *  it be found/replaced by identity instead of by (necessarily unique)
+   *  display name. */
+  onlineId?: string;
 }
 
 interface PlayerState {
@@ -35,8 +39,11 @@ interface PlayerState {
   libraryOpen: boolean;
   /** Album shown in the right track panel, or -1 if none. */
   browseAlbumIndex: number;
+  /** Online search panel is visible (mutually exclusive with the track panel). */
+  searchOpen: boolean;
 
   setAlbums: (albums: Album[], musicDir: string | null) => void;
+  toggleSearch: () => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setIsPlaying: (playing: boolean) => void;
@@ -63,6 +70,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   trackDurations: {},
   libraryOpen: true,
   browseAlbumIndex: -1,
+  searchOpen: false,
 
   setAlbums: (albums, musicDir) =>
     set({
@@ -99,7 +107,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       isPlaying: true,
     });
   },
-  toggleLibrary: () => set({ libraryOpen: !get().libraryOpen }),
+  toggleLibrary: () => set({ libraryOpen: !get().libraryOpen, searchOpen: false }),
+  toggleSearch: () => set({ searchOpen: !get().searchOpen, libraryOpen: false }),
   browseAlbum: (albumIndex) => {
     const album = get().albums[albumIndex];
     if (!album) return;
@@ -110,8 +119,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { albums, currentAlbumIndex, currentTrackIndex } = get();
     const album = albums[currentAlbumIndex];
     if (!album) return;
+    const nextIndex = (currentTrackIndex + 1) % album.tracks.length;
+    // Online-search albums only have a `path` for tracks the user has
+    // already played (NetEase CDN urls are fetched on demand, not
+    // prefetched for the whole album) — skipping to an unfetched one would
+    // just fail to load, so stay put instead.
+    if (!album.tracks[nextIndex]?.path) return;
     set({
-      currentTrackIndex: (currentTrackIndex + 1) % album.tracks.length,
+      currentTrackIndex: nextIndex,
       currentTime: 0,
     });
   },
@@ -119,9 +134,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { albums, currentAlbumIndex, currentTrackIndex } = get();
     const album = albums[currentAlbumIndex];
     if (!album) return;
+    const prevIndex = (currentTrackIndex - 1 + album.tracks.length) % album.tracks.length;
+    if (!album.tracks[prevIndex]?.path) return;
     set({
-      currentTrackIndex:
-        (currentTrackIndex - 1 + album.tracks.length) % album.tracks.length,
+      currentTrackIndex: prevIndex,
       currentTime: 0,
     });
   },

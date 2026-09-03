@@ -102,8 +102,21 @@ export function useAudioSync() {
     });
   }, [setTime, setTrackDuration]);
 
-  // Advance to the next track when the current one finishes.
+  // Advance to the next track when the current one finishes — unless it's
+  // an online-search album and the next track has no known playback url yet
+  // (only the just-fetched track has `path` filled in; NetEase CDN links
+  // are time-limited and fetched on demand, not prefetched for the whole
+  // album), in which case just stop.
   useEffect(() => {
-    return audioEngine.onEnded(() => nextTrack());
-  }, [nextTrack]);
+    return audioEngine.onEnded(() => {
+      const s = usePlayerStore.getState();
+      const album = s.albums[s.currentAlbumIndex];
+      const nextIndex = (s.currentTrackIndex + 1) % (album?.tracks.length ?? 1);
+      if (album && !album.tracks[nextIndex]?.path) {
+        setIsPlaying(false);
+        return;
+      }
+      nextTrack();
+    });
+  }, [nextTrack, setIsPlaying]);
 }

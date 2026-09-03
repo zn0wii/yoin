@@ -4,11 +4,13 @@ import { useAudioSync } from "./audio/useAudioSync";
 import { scanLibrary, pickMusicFolder } from "./audio/libraryApi";
 import { LibraryNav } from "./ui/LibraryNav";
 import { AlbumGrid } from "./ui/AlbumGrid";
+import { SearchPanel } from "./ui/SearchPanel";
 import { TrackList } from "./ui/TrackList";
 import { ControlPanel } from "./ui/ControlPanel";
 import { VinylStage } from "./scene/VinylStage";
 import "./ui/LibraryNav.css";
 import "./ui/AlbumGrid.css";
+import "./ui/SearchPanel.css";
 import "./ui/TrackList.css";
 import "./ui/ControlPanel.css";
 import "./App.css";
@@ -18,6 +20,8 @@ function App() {
   const setLoading = usePlayerStore((s) => s.setLoading);
   const setError = usePlayerStore((s) => s.setError);
   const libraryOpen = usePlayerStore((s) => s.libraryOpen);
+  const searchOpen = usePlayerStore((s) => s.searchOpen);
+  const musicDir = usePlayerStore((s) => s.musicDir);
   const browseAlbumIndex = usePlayerStore((s) => s.browseAlbumIndex);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
 
@@ -61,7 +65,10 @@ function App() {
         <VinylStage />
       </main>
       <LibraryNav onPickFolder={handlePickFolder} />
-      {libraryOpen ? <AlbumGrid /> : null}
+      {libraryOpen && !searchOpen ? <AlbumGrid /> : null}
+      {searchOpen ? (
+        <SearchPanel onDownloaded={() => loadLibrary(musicDir ?? undefined)} />
+      ) : null}
       {showTracks ? (
         <aside className="app-sidebar">
           <TrackList />

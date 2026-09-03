@@ -1,0 +1,545 @@
+/* Full-viewport layer that replaces the album shelf while searching. Sits
+   between the vinyl scene (z 0) and the nav/player chrome (z 3+). */
+.search-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8vh 24px 116px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.search-panel {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  border-radius: 20px;
+  background: rgba(18, 14, 12, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+}
+
+.search-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 10px 20px;
+  font-size: 14px;
+  font-weight: 620;
+  color: #f7f1ea;
+  flex: 0 0 auto;
+}
+
+.search-panel-close {
+  border: none;
+  background: transparent;
+  color: rgba(247, 241, 234, 0.55);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.search-panel-close:hover {
+  color: #f7f1ea;
+}
+
+.search-panel-form {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px 16px;
+  flex: 0 0 auto;
+}
+
+.search-panel-input {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 14, 12, 0.32);
+  color: #f7f1ea;
+  font-size: 17px;
+  font-family: inherit;
+}
+
+.search-panel-input::placeholder {
+  color: rgba(247, 241, 234, 0.4);
+}
+
+.search-panel-input:focus {
+  outline: none;
+  border-color: rgba(240, 168, 176, 0.55);
+}
+
+.search-panel-submit {
+  flex: 0 0 auto;
+  height: 48px;
+  padding: 0 22px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(240, 168, 176, 0.85);
+  color: #2a1512;
+  font-size: 14.5px;
+  font-weight: 620;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.search-panel-submit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.search-panel-error {
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(200, 70, 70, 0.18);
+  color: #f4c8cc;
+  font-size: 13px;
+  line-height: 1.4;
+  flex: 0 0 auto;
+}
+
+.search-panel-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 20px 20px;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.search-panel-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-panel-results::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+.search-panel-empty {
+  padding: 40px 16px;
+  color: rgba(247, 241, 234, 0.45);
+  font-size: 14px;
+  text-align: center;
+}
+
+.search-album-group {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.search-album-group:last-child {
+  border-bottom: none;
+}
+
+.search-album-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 4px 8px;
+}
+
+.search-album-group-info {
+  min-width: 0;
+}
+
+.search-album-group-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f7f1ea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-album-group-artist {
+  font-size: 12px;
+  color: rgba(247, 241, 234, 0.55);
+  margin-top: 2px;
+}
+
+.search-album-download {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f1ea;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.search-album-download svg {
+  width: 14px;
+  height: 14px;
+}
+
+.search-album-download:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.search-album-download:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.search-album-progress {
+  padding: 0 4px 8px;
+  font-size: 12px;
+  color: rgba(240, 168, 176, 0.9);
+}
+
+.search-track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-track-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 4px;
+  font-size: 13px;
+  color: rgba(247, 241, 234, 0.82);
+}
+
+.search-track-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-track-artist {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: rgba(247, 241, 234, 0.45);
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .search-overlay {
+    padding: 12px var(--ui-inset, 12px);
+    align-items: stretch;
+  }
+
+  .search-panel {
+    width: 100%;
+  }
+
+  .search-panel-input {
+    height: 40px;
+    font-size: 15px;
+  }
+
+  .search-panel-submit {
+    height: 40px;
+  }
+}
+
+/* Album search results: a vertical list of cover + name/artist cards. */
+.album-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.album-search-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.album-search-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.album-search-cover {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.album-search-cover-empty {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.album-search-info {
+  min-width: 0;
+}
+
+.album-search-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #f7f1ea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-search-artist {
+  font-size: 12px;
+  color: rgba(247, 241, 234, 0.55);
+  margin-top: 2px;
+}
+
+/* Song search results: whole row isn't clickable — only the title button
+ * triggers playback, so the row itself shouldn't look/act like a link. */
+.song-search-item {
+  cursor: default;
+}
+
+.song-search-item:hover {
+  background: none;
+}
+
+.song-search-title {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #f7f1ea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.song-search-title:hover {
+  color: #e8c07d;
+}
+
+.song-search-title:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* "专辑" tag on album search results, distinguishing them from songs. */
+.album-search-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #e8c07d;
+  border: 1px solid rgba(232, 192, 125, 0.5);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Album detail view: cover/info header + scrollable track list. */
+.album-detail-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.album-detail-topbar {
+  padding: 0 20px 8px;
+  flex: 0 0 auto;
+}
+
+.album-detail-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(247, 241, 234, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.album-detail-back:hover {
+  color: #f7f1ea;
+}
+
+.album-detail-back svg {
+  width: 14px;
+  height: 14px;
+}
+
+.album-detail-header {
+  display: flex;
+  gap: 16px;
+  padding: 0 20px 16px;
+  flex: 0 0 auto;
+}
+
+.album-detail-cover {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.album-detail-cover-empty {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.album-detail-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.album-detail-name {
+  font-size: 16px;
+  font-weight: 650;
+  color: #f7f1ea;
+}
+
+.album-detail-artist {
+  font-size: 12.5px;
+  color: rgba(247, 241, 234, 0.6);
+}
+
+.album-detail-description {
+  font-size: 11.5px;
+  color: rgba(247, 241, 234, 0.4);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.album-detail-download {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
+.album-detail-track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px 20px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.album-detail-track-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.album-detail-track-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+.album-detail-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: rgba(247, 241, 234, 0.82);
+}
+
+.album-detail-track.active {
+  background: rgba(240, 168, 176, 0.14);
+  color: #f7f1ea;
+}
+
+.album-detail-track-no {
+  flex: 0 0 auto;
+  width: 22px;
+  text-align: right;
+  font-size: 12px;
+  color: rgba(247, 241, 234, 0.4);
+}
+
+.album-detail-track-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-detail-track-duration {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: rgba(247, 241, 234, 0.4);
+}
+
+.album-detail-track-play {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f1ea;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.album-detail-track-play:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.album-detail-track-play:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .album-detail-cover {
+    width: 72px;
+    height: 72px;
+  }
+}

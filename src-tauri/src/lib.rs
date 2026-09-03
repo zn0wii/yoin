@@ -2,6 +2,11 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime, Scopes};
 
+mod gdmusic;
+mod netease_client;
+mod netease_crypto;
+mod search;
+
 #[derive(Serialize, Clone)]
 struct TrackInfo {
     /// File name without extension, used as display title.
@@ -416,7 +421,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![scan_library])
+        .manage(netease_client::NeteaseSession::new())
+        .invoke_handler(tauri::generate_handler![
+            scan_library,
+            netease_client::search_netease_music,
+            netease_client::get_netease_album_detail,
+            netease_client::get_netease_song_url,
+            search::download_album
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
