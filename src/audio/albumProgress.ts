@@ -1,4 +1,26 @@
-import type { Album } from "../store/playerStore";
+import type { Album, Track } from "../store/playerStore";
+
+/** Cache key for a track's duration — CUE tracks share a file path, so the
+ *  start offset disambiguates them. */
+export function trackKey(track: Track): string {
+  return track.start != null ? `${track.path}@${track.start}` : track.path;
+}
+
+/** Playable span of track `i`: its CUE start (0 for plain tracks) and the
+ *  start of the next track in the same file (Infinity = file end). */
+export function trackWindow(
+  album: Album | undefined,
+  i: number
+): { start: number; end: number } {
+  const track = album?.tracks[i];
+  if (!track || track.start == null) return { start: 0, end: Number.POSITIVE_INFINITY };
+  const next = album.tracks[i + 1];
+  const end =
+    next && next.path === track.path && next.start != null && next.start > track.start
+      ? next.start
+      : Number.POSITIVE_INFINITY;
+  return { start: track.start, end };
+}
 
 /**
  * Album-as-one-side progress in [0, 1]:
@@ -19,7 +41,7 @@ export function albumStylusProgress(
 
   const n = album.tracks.length;
   const resolved: number[] = album.tracks.map((t, i) => {
-    const cached = durations[t.path] ?? 0;
+    const cached = durations[trackKey(t)] ?? 0;
     if (cached > 0) return cached;
     if (i === trackIndex && currentTrackDuration > 0) return currentTrackDuration;
     return 0;

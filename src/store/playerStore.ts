@@ -3,6 +3,8 @@ import { create } from "zustand";
 export interface Track {
   title: string;
   path: string;
+  /** Start offset (seconds) into `path` — CUE tracks share one file. */
+  start?: number;
 }
 
 export interface Album {

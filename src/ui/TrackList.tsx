@@ -1,4 +1,6 @@
 import { usePlayerStore } from "../store/playerStore";
+import { trackKey } from "../audio/albumProgress";
+import { useAlbumDurations } from "../audio/useAlbumDurations";
 
 function formatTime(sec: number | undefined): string {
   if (!Number.isFinite(sec) || !sec || sec < 0) return "";
@@ -39,6 +41,9 @@ export function TrackList() {
     browseAlbumIndex >= 0 ? browseAlbumIndex : currentAlbumIndex;
   const album = albums[albumIndex];
 
+  // Show per-track lengths as soon as the album is browsed (not just played).
+  useAlbumDurations(album);
+
   if (!album) {
     return (
       <div className="track-list">
@@ -60,10 +65,10 @@ export function TrackList() {
           const isCurrent =
             albumIndex === currentAlbumIndex &&
             trackIndex === currentTrackIndex;
-          const dur = formatTime(trackDurations[track.path]);
+          const dur = formatTime(trackDurations[trackKey(track)]);
           return (
             <button
-              key={track.path}
+              key={trackKey(track)}
               className={`track-list-item${isCurrent ? " active" : ""}`}
               onClick={() => {
                 if (isCurrent) setIsPlaying(!isPlaying);

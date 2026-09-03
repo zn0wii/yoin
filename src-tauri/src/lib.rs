@@ -8,6 +8,9 @@ struct TrackInfo {
     title: String,
     /// Absolute path on disk. Frontend converts this via convertFileSrc.
     path: String,
+    /// Start offset (seconds) into `path` — CUE tracks share one file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    start: Option<f64>,
 }
 
 /// A vinyl record: `root/artist/album/<audio files>`.
@@ -93,24 +96,197 @@ fn find_cover(dir: &Path) -> Option<String> {
 /// natively decodable by the WebView's HTMLAudioElement).
 const AUDIO_EXTS: &[&str] = &["mp3", "flac", "m4a", "ogg", "opus", "wav", "aac"];
 
-/// Collect audio files directly inside `dir` (non-recursive), sorted by title.
+/* --- CUE sheet parsing ----------------------------------------------------- */
+
+/// One CUE track: its title, the file it lives in, and the INDEX 01 start.
+struct CueEntry {
+    file: String,
+    title: String,
+    start: f64,
+}
+
+/// Extract the text between the first and last double quotes of a line.
+fn quoted_arg(line: &str) -> Option<&str> {
+    let start = line.find('"')? + 1;
+    let end = line.rfind('"')?;
+    if end >= start {
+        Some(&line[start..end])
+    } else {
+        None
+    }
+}
+
+/// `MM:SS:FF` (75 frames/sec) → seconds.
+fn cue_index_time(arg: &str) -> Option<f64> {
+    let mut parts = arg.split(':');
+    let mm: f64 = parts.next()?.trim().parse().ok()?;
+    let ss: f64 = parts.next()?.trim().parse().ok()?;
+    let ff: f64 = parts.next()?.trim().parse().ok()?;
+    Some(mm * 60.0 + ss + ff / 75.0)
+}
+
+fn is_audio_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| AUDIO_EXTS.iter().any(|a| ext.eq_ignore_ascii_case(a)))
+        .unwrap_or(false)
+}
+
+/// Parse a CUE sheet's FILE/TRACK/TITLE/INDEX lines (everything else,
+/// including REM and PERFORMER, is ignored). Only AUDIO tracks with an
+/// INDEX 01 are kept, in sheet order.
+fn parse_cue(text: &str) -> Vec<CueEntry> {
+    let mut entries = Vec::new();
+    let mut file = String::new();
+    let mut title: Option<String> = None;
+    let mut start: Option<f64> = None;
+    let mut in_track = false;
+
+    let flush = |entries: &mut Vec<CueEntry>,
+                     file: &mut String,
+                     title: &mut Option<String>,
+                     start: &mut Option<f64>,
+                     in_track: &mut bool| {
+        if *in_track {
+            if let (Some(title), Some(start)) = (title.take(), start.take()) {
+                entries.push(CueEntry {
+                    file: file.clone(),
+                    title,
+                    start,
+                });
+            }
+        }
+        *title = None;
+        *start = None;
+        *in_track = false;
+    };
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("REM") {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        let Some(command) = words.next() else { continue };
+        let arg = quoted_arg(line).map(str::to_owned).unwrap_or_else(|| {
+            words.collect::<Vec<_>>().join(" ")
+        });
+        match command.to_ascii_uppercase().as_str() {
+            "FILE" => {
+                flush(&mut entries, &mut file, &mut title, &mut start, &mut in_track);
+                file = arg;
+            }
+            "TRACK" => {
+                flush(&mut entries, &mut file, &mut title, &mut start, &mut in_track);
+                // "TRACK 01 AUDIO" — skip data tracks.
+                let is_audio = line
+                    .split_whitespace()
+                    .last()
+                    .map(|t| t.eq_ignore_ascii_case("AUDIO"))
+                    .unwrap_or(false);
+                in_track = is_audio;
+            }
+            "TITLE" => {
+                if in_track {
+                    title = Some(arg);
+                }
+                // Album-level TITLE (before any TRACK) is unused: the folder
+                // name is the album name, like every other layout.
+            }
+            "INDEX" => {
+                if in_track {
+                    let mut parts = line.split_whitespace();
+                    let _ = parts.next(); // INDEX
+                    let no = parts.next().unwrap_or("");
+                    let time = parts.next().unwrap_or("");
+                    if no == "01" {
+                        if let Some(secs) = cue_index_time(time) {
+                            start = Some(secs);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    flush(&mut entries, &mut file, &mut title, &mut start, &mut in_track);
+    entries
+}
+
+/// Decode CUE text: BOMs win, then valid UTF-8, then GBK — the de-facto
+/// encoding of Chinese CD rips (EAC/foobar2000 export ANSI sheets).
+fn decode_cue_text(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return encoding_rs::UTF_16LE.decode(bytes).0.into_owned();
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return encoding_rs::UTF_16BE.decode(bytes).0.into_owned();
+    }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.trim_start_matches('\u{feff}').to_owned();
+    }
+    encoding_rs::GBK.decode(bytes).0.into_owned()
+}
+
+/// Collect audio files directly inside `dir` (non-recursive), sorted by
+/// title. A `.cue` sheet next to a single-file rip (album.wav + album.cue)
+/// replaces that file with its virtual tracks, each carrying a start offset.
 fn collect_audio_files(dir: &Path) -> Result<Vec<TrackInfo>, String> {
     let entries =
         std::fs::read_dir(dir).map_err(|e| format!("failed to read dir {}: {e}", dir.display()))?;
 
-    let mut tracks = Vec::new();
+    let mut audio_files: Vec<PathBuf> = Vec::new();
+    let mut cue_files: Vec<PathBuf> = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
-        let is_audio = path
+        let is_cue = path
             .extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext| AUDIO_EXTS.iter().any(|a| ext.eq_ignore_ascii_case(a)))
+            .map(|ext| ext.eq_ignore_ascii_case("cue"))
             .unwrap_or(false);
-        if !is_audio {
+        if is_cue {
+            cue_files.push(path);
+        } else if is_audio_path(&path) {
+            audio_files.push(path);
+        }
+    }
+    audio_files.sort();
+    cue_files.sort();
+
+    let mut tracks = Vec::new();
+    let mut consumed: Vec<String> = Vec::new(); // lowercase file names claimed by cues
+
+    for cue in &cue_files {
+        let bytes = match std::fs::read(cue) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let text = decode_cue_text(&bytes);
+        for entry in parse_cue(&text) {
+            let target = dir.join(&entry.file);
+            if !target.is_file() || !is_audio_path(&target) {
+                continue;
+            }
+            consumed.push(entry.file.to_lowercase());
+            tracks.push(TrackInfo {
+                title: entry.title,
+                path: target.to_string_lossy().into_owned(),
+                start: Some(entry.start),
+            });
+        }
+    }
+
+    for path in &audio_files {
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if consumed.iter().any(|c| *c == name) {
             continue;
         }
         let title = path
@@ -121,9 +297,14 @@ fn collect_audio_files(dir: &Path) -> Result<Vec<TrackInfo>, String> {
         tracks.push(TrackInfo {
             title,
             path: path.to_string_lossy().into_owned(),
+            start: None,
         });
     }
-    tracks.sort_by(|a, b| a.title.cmp(&b.title));
+
+    // CUE order is authoritative; plain folders keep the title sort.
+    if tracks.iter().all(|t| t.start.is_none()) {
+        tracks.sort_by(|a, b| a.title.cmp(&b.title));
+    }
     Ok(tracks)
 }
 
@@ -238,4 +419,40 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![scan_library])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Chinese CD rips ship ANSI (GBK) cues — the FILE reference must survive
+    /// decoding so the wav can be matched on disk.
+    #[test]
+    fn cue_gbk_text_decodes() {
+        let (gbk, _, _) = encoding_rs::GBK.encode(
+            "FILE \"邓紫棋 - 棋开得胜K2HD.wav\" WAVE\n\
+             \x20 TRACK 01 AUDIO\n\
+             \x20   TITLE \"泡沫\"\n\
+             \x20   INDEX 01 00:00:00\n",
+        );
+        let text = decode_cue_text(gbk.as_ref());
+        assert!(text.contains("棋开得胜K2HD.wav"));
+        assert!(text.contains("泡沫"));
+    }
+
+    #[test]
+    fn cue_parses_tracks_and_starts() {
+        let text = "FILE \"album.wav\" WAVE\n\
+                    TRACK 01 AUDIO\n\
+                    \x20 TITLE \"One\"\n\
+                    \x20 INDEX 01 00:00:00\n\
+                    TRACK 02 AUDIO\n\
+                    \x20 TITLE \"Two\"\n\
+                    \x20 INDEX 01 04:17:68\n";
+        let entries = parse_cue(text);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].title, "One");
+        assert_eq!(entries[0].file, "album.wav");
+        assert!((entries[1].start - (4.0 * 60.0 + 17.0 + 68.0 / 75.0)).abs() < 1e-6);
+    }
 }

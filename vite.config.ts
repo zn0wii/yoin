@@ -57,16 +57,144 @@ function demoLibraryPlugin(): Plugin {
   };
   const stripAudioExt = new RegExp(`\\.(${AUDIO_EXTS.join("|")})$`, "i");
 
-  /** Audio files directly inside `dir`, sorted by title. */
-  const collectAudio = (dir: string) =>
-    fs
+  /* --- CUE sheets: single-file rip → virtual tracks ----------------------- */
+
+  interface CueEntry {
+    file: string;
+    title: string;
+    start: number;
+  }
+
+  const quotedArg = (line: string): string | null => {
+    const start = line.indexOf('"');
+    const end = line.lastIndexOf('"');
+    return start >= 0 && end > start ? line.slice(start + 1, end) : null;
+  };
+
+  /** `MM:SS:FF` (75 frames/sec) → seconds. */
+  const cueIndexTime = (arg: string): number | null => {
+    const parts = arg.split(":");
+    if (parts.length !== 3) return null;
+    const mm = Number(parts[0]);
+    const ss = Number(parts[1]);
+    const ff = Number(parts[2]);
+    if ([mm, ss, ff].some((n) => !Number.isFinite(n))) return null;
+    return mm * 60 + ss + ff / 75;
+  };
+
+  const parseCue = (buf: Buffer): CueEntry[] => {
+    // BOMs win, then valid UTF-8, then GBK (common for Chinese CD rips).
+    let text: string;
+    if (buf[0] === 0xff && buf[1] === 0xfe) {
+      text = new TextDecoder("utf-16le").decode(buf);
+    } else if (buf[0] === 0xfe && buf[1] === 0xff) {
+      text = new TextDecoder("utf-16be").decode(buf);
+    } else {
+      text = new TextDecoder("utf-8").decode(buf);
+      if (text.includes("\uFFFD")) {
+        try {
+          text = new TextDecoder("gbk").decode(buf);
+        } catch {
+          // keep the lossy UTF-8 text
+        }
+      }
+    }
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+
+    const entries: CueEntry[] = [];
+    let file = "";
+    let title: string | null = null;
+    let start: number | null = null;
+    let inTrack = false;
+
+    const flush = () => {
+      if (inTrack && title != null && start != null) {
+        entries.push({ file, title, start });
+      }
+      title = null;
+      start = null;
+      inTrack = false;
+    };
+
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("REM")) continue;
+      const command = line.split(/\s+/)[0]?.toUpperCase();
+      const arg = quotedArg(line) ?? line.split(/\s+/).slice(1).join(" ");
+      switch (command) {
+        case "FILE":
+          flush();
+          file = arg;
+          break;
+        case "TRACK": {
+          flush();
+          const type = line.split(/\s+/).pop();
+          inTrack = type?.toUpperCase() === "AUDIO";
+          break;
+        }
+        case "TITLE":
+          if (inTrack) title = arg;
+          break;
+        case "INDEX": {
+          if (!inTrack) break;
+          const parts = line.split(/\s+/);
+          if (parts[1] === "01") {
+            const secs = cueIndexTime(parts[2] ?? "");
+            if (secs != null) start = secs;
+          }
+          break;
+        }
+      }
+    }
+    flush();
+    return entries;
+  };
+
+  /** Audio files directly inside `dir`. A `.cue` sheet replaces its
+   *  single-file rip with virtual tracks carrying start offsets. */
+  const collectAudio = (dir: string) => {
+    const files = fs
       .readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isFile() && isAudio(e.name))
-      .map((e) => ({
-        title: e.name.replace(stripAudioExt, ""),
-        path: asFsUrl(path.join(dir, e.name)),
-      }))
-      .sort((a, b) => a.title.localeCompare(b.title));
+      .filter((e) => e.isFile())
+      .map((e) => e.name)
+      .sort();
+    const cues = files.filter((f) => f.toLowerCase().endsWith(".cue"));
+
+    const tracks: Array<{
+      title: string;
+      path: string;
+      start?: number;
+    }> = [];
+    const consumed = new Set<string>(); // lowercase names claimed by cues
+
+    for (const cue of cues) {
+      const entries = parseCue(fs.readFileSync(path.join(dir, cue)));
+      for (const entry of entries) {
+        const target = path.join(dir, entry.file);
+        if (!fs.existsSync(target) || !isAudio(entry.file)) continue;
+        consumed.add(entry.file.toLowerCase());
+        tracks.push({
+          title: entry.title,
+          path: asFsUrl(target),
+          start: entry.start,
+        });
+      }
+    }
+
+    for (const name of files.filter(isAudio)) {
+      if (consumed.has(name.toLowerCase())) continue;
+      tracks.push({
+        title: name.replace(stripAudioExt, ""),
+        path: asFsUrl(path.join(dir, name)),
+      });
+    }
+
+    // CUE order is authoritative; plain folders sort by title.
+    if (tracks.every((t) => t.start == null)) {
+      tracks.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    return tracks;
+  };
 
   const listSubdirs = (dir: string) =>
     fs
@@ -158,18 +286,18 @@ export default defineConfig(async () => ({
           port: 1421,
         }
       : undefined,
-    watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      //    plus anything under `assets/` (glob matching proved unreliable for
-      //    deeply nested new files on Windows — a normalized-path function is
-      //    airtight against EBUSY crashes from files locked by other apps)
-      ignored: [
-        "**/src-tauri/**",
-        (path: string) => {
-        const p = path.replace(/\\/g, "/");
-        return /\/assets$/.test(p) || /\/assets\//.test(p);
-        },
-      ],
-    },
+      watch: {
+        // 3. tell Vite to ignore watching `src-tauri`
+        //    plus anything under `assets/` (glob matching proved unreliable for
+        //    deeply nested new files on Windows — a normalized-path function is
+        //    airtight against EBUSY crashes from files locked by other apps)
+        ignored: [
+          "**/src-tauri/**",
+          (path: string) => {
+            const p = path.replace(/\\/g, "/");
+            return /\/assets$/.test(p) || /\/assets\//.test(p);
+          },
+        ],
+      },
   },
 }));
