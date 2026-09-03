@@ -23,3 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 assets/
+music
+.DS_Store
