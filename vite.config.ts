@@ -36,7 +36,18 @@ function demoLibraryPlugin(): Plugin {
         if (hit) return asFsUrl(path.join(dir, hit));
       }
     }
-    return null;
+    // Last resort: any image in the folder — the largest one wins (covers
+    // usually dwarf back scans and thumbnails).
+    const isImage = (name: string) => {
+      const dot = name.lastIndexOf(".");
+      return dot > 0 && exts.includes(name.slice(dot + 1).toLowerCase());
+    };
+    let best: { name: string; size: number } | null = null;
+    for (const name of files.filter(isImage)) {
+      const size = fs.statSync(path.join(dir, name)).size;
+      if (!best || size > best.size) best = { name, size };
+    }
+    return best ? asFsUrl(path.join(dir, best.name)) : null;
   };
 
   const AUDIO_EXTS = ["mp3", "flac", "m4a", "ogg", "opus", "wav", "aac"];
@@ -46,8 +57,9 @@ function demoLibraryPlugin(): Plugin {
   };
   const stripAudioExt = new RegExp(`\\.(${AUDIO_EXTS.join("|")})$`, "i");
 
-  const scanAlbum = (dir: string, albumName: string, artist: string) => {
-    const tracks = fs
+  /** Audio files directly inside `dir`, sorted by title. */
+  const collectAudio = (dir: string) =>
+    fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isFile() && isAudio(e.name))
       .map((e) => ({
@@ -55,8 +67,28 @@ function demoLibraryPlugin(): Plugin {
         path: asFsUrl(path.join(dir, e.name)),
       }))
       .sort((a, b) => a.title.localeCompare(b.title));
+
+  const listSubdirs = (dir: string) =>
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+
+  const scanAlbum = (dir: string, albumName: string, artist: string) => {
+    // Multi-disc layouts: album/cd1, album/cd2 — own files first, then each
+    // subfolder in name order so disc order is preserved.
+    const tracks = [...collectAudio(dir)];
+    const subs = listSubdirs(dir);
+    for (const sub of subs) {
+      tracks.push(...collectAudio(path.join(dir, sub)));
+    }
     if (tracks.length === 0) return null;
-    return { name: albumName, artist, tracks, cover: findCover(dir) };
+    const cover =
+      findCover(dir) ??
+      subs.map((sub) => findCover(path.join(dir, sub))).find(Boolean) ??
+      null;
+    return { name: albumName, artist, tracks, cover };
   };
 
   const listDirs = (dir: string) =>

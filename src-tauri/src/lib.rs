@@ -41,8 +41,10 @@ fn default_music_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, S
         .map_err(|e| format!("failed to resolve resource dir: {e}"))
 }
 
-/// Look for album artwork in `dir` (non-recursive).
-/// Prefers common names: cover / folder / album / front / artwork.
+/// Look for album artwork in `dir` (non-recursive). Prefers common names
+/// (cover / folder / album / front / artwork); as a last resort falls back to
+/// the largest image file in the folder — covers usually dwarf back scans
+/// and thumbnails.
 fn find_cover(dir: &Path) -> Option<String> {
     const STEMS: &[&str] = &["cover", "folder", "album", "front", "artwork"];
     const EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif"];
@@ -74,7 +76,17 @@ fn find_cover(dir: &Path) -> Option<String> {
             }
         }
     }
-    None
+
+    files
+        .iter()
+        .filter(|p| {
+            p.extension()
+                .and_then(|x| x.to_str())
+                .map(|x| EXTS.iter().any(|e| x.eq_ignore_ascii_case(e)))
+                .unwrap_or(false)
+        })
+        .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 /// Audio extensions collected as tracks (matched case-insensitively; all are
@@ -82,7 +94,7 @@ fn find_cover(dir: &Path) -> Option<String> {
 const AUDIO_EXTS: &[&str] = &["mp3", "flac", "m4a", "ogg", "opus", "wav", "aac"];
 
 /// Collect audio files directly inside `dir` (non-recursive), sorted by title.
-fn collect_tracks(dir: &Path) -> Result<Vec<TrackInfo>, String> {
+fn collect_audio_files(dir: &Path) -> Result<Vec<TrackInfo>, String> {
     let entries =
         std::fs::read_dir(dir).map_err(|e| format!("failed to read dir {}: {e}", dir.display()))?;
 
@@ -115,6 +127,18 @@ fn collect_tracks(dir: &Path) -> Result<Vec<TrackInfo>, String> {
     Ok(tracks)
 }
 
+/// Album tracks: audio files directly in the album folder plus files one
+/// level deeper — multi-disc layouts like `album/cd1`, `album/cd2`. Files in
+/// the album folder come first, then each subfolder in name order, so disc
+/// order is preserved. Nothing deeper is scanned.
+fn collect_tracks(dir: &Path) -> Result<Vec<TrackInfo>, String> {
+    let mut tracks = collect_audio_files(dir)?;
+    for sub in list_dirs(dir)? {
+        tracks.extend(collect_audio_files(&sub)?);
+    }
+    Ok(tracks)
+}
+
 fn dir_name(path: &Path) -> String {
     path.file_name()
         .and_then(|s| s.to_str())
@@ -135,8 +159,10 @@ fn list_dirs(path: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// Scan a music library directory (or the default one when `dir` is None).
 ///
-/// Layout: `root/artist/album/<audio files>`. The whole tree is allow-listed
-/// on the asset protocol scope so the frontend can stream files via
+/// Layout: `root/artist/album/<audio files>`, optionally one level deeper for
+/// multi-disc albums (`album/cd1`, `album/cd2`). Artwork is searched in the
+/// album folder first, then its subfolders. The whole tree is allow-listed on
+/// the asset protocol scope so the frontend can stream files via
 /// `convertFileSrc`.
 #[tauri::command]
 fn scan_library<R: Runtime>(
@@ -164,11 +190,16 @@ fn scan_library<R: Runtime>(
             if tracks.is_empty() {
                 continue;
             }
+            let cover = find_cover(&album_dir).or_else(|| {
+                list_dirs(&album_dir)
+                    .ok()
+                    .and_then(|subs| subs.into_iter().find_map(|sub| find_cover(&sub)))
+            });
             albums.push(Album {
                 name: dir_name(&album_dir),
                 artist: Some(artist.clone()),
                 tracks,
-                cover: find_cover(&album_dir),
+                cover,
             });
         }
     }
