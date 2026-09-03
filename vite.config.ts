@@ -26,9 +26,11 @@ function demoLibraryPlugin(): Plugin {
     for (const stem of stems) {
       for (const ext of exts) {
         const hit = files.find((f) => {
-          const [s, e] = f.split(".");
+          const dot = f.lastIndexOf(".");
+          if (dot <= 0) return false;
           return (
-            s?.toLowerCase() === stem && e?.toLowerCase() === ext
+            f.slice(0, dot).toLowerCase() === stem &&
+            f.slice(dot + 1).toLowerCase() === ext
           );
         });
         if (hit) return asFsUrl(path.join(dir, hit));
@@ -37,12 +39,19 @@ function demoLibraryPlugin(): Plugin {
     return null;
   };
 
+  const AUDIO_EXTS = ["mp3", "flac", "m4a", "ogg", "opus", "wav", "aac"];
+  const isAudio = (name: string) => {
+    const dot = name.lastIndexOf(".");
+    return dot > 0 && AUDIO_EXTS.includes(name.slice(dot + 1).toLowerCase());
+  };
+  const stripAudioExt = new RegExp(`\\.(${AUDIO_EXTS.join("|")})$`, "i");
+
   const scanAlbum = (dir: string, albumName: string, artist: string) => {
     const tracks = fs
       .readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".mp3"))
+      .filter((e) => e.isFile() && isAudio(e.name))
       .map((e) => ({
-        title: e.name.replace(/\.mp3$/i, ""),
+        title: e.name.replace(stripAudioExt, ""),
         path: asFsUrl(path.join(dir, e.name)),
       }))
       .sort((a, b) => a.title.localeCompare(b.title));

@@ -10,7 +10,7 @@ struct TrackInfo {
     path: String,
 }
 
-/// A vinyl record: `root/artist/album/*.mp3`.
+/// A vinyl record: `root/artist/album/<audio files>`.
 #[derive(Serialize, Clone)]
 struct Album {
     /// Album folder name.
@@ -77,8 +77,12 @@ fn find_cover(dir: &Path) -> Option<String> {
     None
 }
 
-/// Collect `.mp3` files directly inside `dir` (non-recursive), sorted by title.
-fn collect_mp3s(dir: &Path) -> Result<Vec<TrackInfo>, String> {
+/// Audio extensions collected as tracks (matched case-insensitively; all are
+/// natively decodable by the WebView's HTMLAudioElement).
+const AUDIO_EXTS: &[&str] = &["mp3", "flac", "m4a", "ogg", "opus", "wav", "aac"];
+
+/// Collect audio files directly inside `dir` (non-recursive), sorted by title.
+fn collect_tracks(dir: &Path) -> Result<Vec<TrackInfo>, String> {
     let entries =
         std::fs::read_dir(dir).map_err(|e| format!("failed to read dir {}: {e}", dir.display()))?;
 
@@ -89,12 +93,12 @@ fn collect_mp3s(dir: &Path) -> Result<Vec<TrackInfo>, String> {
         if !path.is_file() {
             continue;
         }
-        let is_mp3 = path
+        let is_audio = path
             .extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("mp3"))
+            .map(|ext| AUDIO_EXTS.iter().any(|a| ext.eq_ignore_ascii_case(a)))
             .unwrap_or(false);
-        if !is_mp3 {
+        if !is_audio {
             continue;
         }
         let title = path
@@ -131,8 +135,9 @@ fn list_dirs(path: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// Scan a music library directory (or the default one when `dir` is None).
 ///
-/// Layout: `root/artist/album/*.mp3`. The whole tree is allow-listed on the
-/// asset protocol scope so the frontend can stream files via `convertFileSrc`.
+/// Layout: `root/artist/album/<audio files>`. The whole tree is allow-listed
+/// on the asset protocol scope so the frontend can stream files via
+/// `convertFileSrc`.
 #[tauri::command]
 fn scan_library<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -155,7 +160,7 @@ fn scan_library<R: Runtime>(
     for artist_dir in list_dirs(&root_dir)? {
         let artist = dir_name(&artist_dir);
         for album_dir in list_dirs(&artist_dir)? {
-            let tracks = collect_mp3s(&album_dir)?;
+            let tracks = collect_tracks(&album_dir)?;
             if tracks.is_empty() {
                 continue;
             }
