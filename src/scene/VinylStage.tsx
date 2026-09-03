@@ -4,7 +4,6 @@ import { Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { usePlayerStore } from "../store/playerStore";
 import {
-  ARM_PIVOT,
   RECORD_R,
   RECORD_Y,
   TonearmArm,
@@ -23,14 +22,14 @@ const BG_ASPECT = 1672 / 941;
 const BG_TARGET = { x: 0.51, y: 0.64, r: 0.2 };
 
 /**
- * Tonearm proportions: the record shrank in the overlay, so a default-length
- * arm would shrink with it. OVERLAY_ARM_LEN gives the arm back its "full"
- * visual size. The pivot keeps the hand-tuned OFFSET direction but its
- * distance is scaled by the same ratio, so the stylus orbit still crosses
- * the lead-in/run-out grooves.
+ * Classic tonearm layout, like a real deck: pivot base at the rear-right of
+ * the platter, arm reaching across the rim, needle on the groove, parked on
+ * a rest beside the platter. Proportions mirror a real turntable: pivot ≈
+ * 1.43 × record radius, effective arm ≈ 1.55 ×, with a small overhang past
+ * the spindle.
  */
-const ARM_PIVOT_OFFSET = new THREE.Vector2(-0.54, 0.3);
-/** Real-deck proportions: arm ≈ 1.53 × record radius, pivot ≈ 1.43 ×. */
+const OVERLAY_PIVOT_ANGLE = -37.9 * (Math.PI / 180);
+const OVERLAY_PIVOT_DIST = 1.3;
 const OVERLAY_ARM_LEN = 1.4;
 
 /**
@@ -93,13 +92,14 @@ function useBgAlignment(group: React.RefObject<THREE.Group | null>) {
 function OverlayScene() {
   const group = useRef<THREE.Group>(null);
   useBgAlignment(group);
-  const armPivot = useMemo(() => {
-    // The hand-tuned offset only sets the pivot DIRECTION around the disc;
-    // the distance mirrors a real deck (≈1.43 × record radius, slightly
-    // under the arm length so the stylus still reaches the run-out groove).
-    const dir = ARM_PIVOT.clone().add(ARM_PIVOT_OFFSET).normalize();
-    return dir.multiplyScalar(OVERLAY_ARM_LEN - 0.1);
-  }, []);
+  const armPivot = useMemo(
+    () =>
+      new THREE.Vector2(
+        Math.cos(OVERLAY_PIVOT_ANGLE) * OVERLAY_PIVOT_DIST,
+        Math.sin(OVERLAY_PIVOT_ANGLE) * OVERLAY_PIVOT_DIST
+      ),
+    []
+  );
 
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const albums = usePlayerStore((s) => s.albums);
@@ -109,10 +109,21 @@ function OverlayScene() {
 
   return (
     <group ref={group}>
-      {/* Reuses the modeled record + tonearm from the 3D scene. */}
-      <VinylDisc playing={active} coverPath={album?.cover ?? null} />
+      {/* constantScreenLength: the stage camera is locked to the photo, so a
+          rigid arm foreshortens as it sweeps and reads as "stretching" on the
+          flat composite. This cancels it presentation-side (see TonearmArm). */}
+      <VinylDisc
+        playing={active}
+        coverPath={album?.cover ?? null}
+        title={album?.name ?? null}
+        artist={album?.artist ?? null}
+      />
       <TonearmMount pivot={armPivot} />
-      <TonearmArm pivot={armPivot} armLen={OVERLAY_ARM_LEN} />
+      <TonearmArm
+        pivot={armPivot}
+        armLen={OVERLAY_ARM_LEN}
+        constantScreenLength
+      />
     </group>
   );
 }

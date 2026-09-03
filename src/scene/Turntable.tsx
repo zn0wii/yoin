@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { usePlayerStore } from "../store/playerStore";
@@ -75,6 +75,17 @@ const stylusMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.35,
   metalness: 0.2,
 });
+/* Cartridge body + replaceable stylus assembly (the lighter front section). */
+const cartridgeMaterial = new THREE.MeshStandardMaterial({
+  color: "#1b1b21",
+  roughness: 0.42,
+  metalness: 0.28,
+});
+const stylusAssemblyMaterial = new THREE.MeshStandardMaterial({
+  color: "#2d2d35",
+  roughness: 0.5,
+  metalness: 0.15,
+});
 
 /* --- Tonearm kinematics --------------------------------------------------- */
 
@@ -82,21 +93,29 @@ const stylusMaterial = new THREE.MeshStandardMaterial({
 export const ARM_PIVOT = new THREE.Vector2(1.26, -0.86);
 /** Distance pivot → headshell mount along local −X. */
 export const ARM_LEN = 1.46;
-/** Parked yaw, swung clear of the platter. */
-const ARM_REST_YAW = 1.7;
-/** Headshell offset relative to the tube. Negative = inward toward the spindle. */
-const HEAD_YAW = -0.18;
-/** Stylus in headshell-local space (matches the mesh below). */
-const STYLUS_IN_HEAD = { x: -0.06, z: 0 };
+/**
+ * Yaw search bound — high enough to sit past the parked position for every
+ * layout (the parked yaw itself is solved from ARM_REST_R below).
+ */
+const ARM_YAW_MAX = 1.7;
+/** Lead-in (outermost) and run-out (innermost) groove radii. */
+const GROOVE_LEAD_IN_R = 0.86;
+const GROOVE_RUN_OUT_R = 0.52;
+/** Parked stylus radius — just clear of the platter rim (R = 0.98). */
+const ARM_REST_R = 1.05;
+/** Needle tip in headshell-local space — must match the stylus mesh below;
+ * every kinematic solve (groove tracking, rest pose, offset angle) follows
+ * this point. */
+const STYLUS_IN_HEAD = { x: -0.099, z: 0 };
 
 function headGroupX(armLen: number) {
   return -(armLen - 0.05);
 }
 
-/** Stylus x/z in the arm plane (after head offset, before pivot yaw). */
-function stylusInArmPlane(armLen: number) {
-  const c = Math.cos(HEAD_YAW);
-  const s = Math.sin(HEAD_YAW);
+/** Stylus x/z in the arm plane (after the headshell bend, before pivot yaw). */
+function stylusInArmPlane(armLen: number, headYaw: number) {
+  const c = Math.cos(headYaw);
+  const s = Math.sin(headYaw);
   return {
     x: headGroupX(armLen) + STYLUS_IN_HEAD.x * c - STYLUS_IN_HEAD.z * s,
     z: STYLUS_IN_HEAD.x * s + STYLUS_IN_HEAD.z * c,
@@ -106,9 +125,10 @@ function stylusInArmPlane(armLen: number) {
 function stylusWorldXZ(
   pivot: THREE.Vector2,
   armLen: number,
-  yaw: number
+  yaw: number,
+  headYaw: number
 ): { x: number; z: number } {
-  const loc = stylusInArmPlane(armLen);
+  const loc = stylusInArmPlane(armLen, headYaw);
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
   return {
@@ -117,26 +137,96 @@ function stylusWorldXZ(
   };
 }
 
-function stylusRadius(pivot: THREE.Vector2, armLen: number, yaw: number): number {
-  const p = stylusWorldXZ(pivot, armLen, yaw);
+function stylusRadius(
+  pivot: THREE.Vector2,
+  armLen: number,
+  yaw: number,
+  headYaw: number
+): number {
+  const p = stylusWorldXZ(pivot, armLen, yaw, headYaw);
   return Math.hypot(p.x, p.z);
 }
 
 /** Yaw that puts the stylus on a given groove radius. The stylus orbit has
  * its closest approach to the disc center at yawMin = atan2(−pivot.y,
- * pivot.x); groove tracking lives on the branch above it (yawMin → rest
- * yaw), where the radius increases monotonically with yaw: run-out (inner)
- * sits just above yawMin, lead-in (outer) just below the rest yaw. */
-function yawForRadius(pivot: THREE.Vector2, armLen: number, r: number): number {
+ * pivot.x); groove tracking lives on the branch above it (yawMin → yaw max),
+ * where the radius increases monotonically with yaw: run-out (inner) sits
+ * near yawMin, lead-in (outer) further up. */
+function yawForRadius(
+  pivot: THREE.Vector2,
+  armLen: number,
+  r: number,
+  headYaw: number
+): number {
   const yawMin = Math.atan2(-pivot.y, pivot.x);
-  let lo = Math.min(yawMin + 1e-4, ARM_REST_YAW - 1e-4);
-  let hi = ARM_REST_YAW;
+  let lo = Math.min(yawMin + 1e-4, ARM_YAW_MAX - 1e-4);
+  let hi = ARM_YAW_MAX;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    if (stylusRadius(pivot, armLen, mid) < r) lo = mid;
+    if (stylusRadius(pivot, armLen, mid, headYaw) < r) lo = mid;
     else hi = mid;
   }
   return (lo + hi) / 2;
+}
+
+/**
+ * Signed tracking error at a pose: the angle between the cartridge axis (the
+ * headshell's −X, i.e. the direction the stylus reads) and the groove
+ * tangent at the stylus. Zero = the stylus follows the groove direction
+ * exactly, like a linear-tracking arm; a pivoted arm can only approximate it.
+ */
+function signedTrackingError(
+  pivot: THREE.Vector2,
+  armLen: number,
+  yaw: number,
+  headYaw: number
+): number {
+  const st = stylusWorldXZ(pivot, armLen, yaw, headYaw);
+  const r = Math.hypot(st.x, st.z) || 1;
+  // Cartridge axis after arm yaw + headshell bend (headshell local −X).
+  const w = yaw + headYaw;
+  const ax = -Math.cos(w);
+  const az = Math.sin(w);
+  // Groove tangent at the stylus = radius rotated 90°.
+  const tx = -st.z / r;
+  const tz = st.x / r;
+  return Math.atan2(ax * tz - az * tx, ax * tx + az * tz);
+}
+
+/**
+ * Headshell offset angle (the cartridge bend) for this arm geometry. A
+ * pivoted arm sweeps an arc while the groove is a spiral, so the cartridge
+ * can never be tangent everywhere — real arms bend the headshell so the
+ * tracking error is minimised and sign-symmetric across the side (the
+ * Baerwald/two-null idea). Here: solve numerically for the bend that makes
+ * the error at the lead-in and run-out grooves equal and opposite, on the
+ * exact geometry (bending the headshell also nudges the stylus sideways, so
+ * an analytic angle would be ~1° off).
+ */
+function headYawFor(pivot: THREE.Vector2, armLen: number): number {
+  const errSum = (headYaw: number) =>
+    signedTrackingError(
+      pivot,
+      armLen,
+      yawForRadius(pivot, armLen, GROOVE_LEAD_IN_R, headYaw),
+      headYaw
+    ) +
+    signedTrackingError(
+      pivot,
+      armLen,
+      yawForRadius(pivot, armLen, GROOVE_RUN_OUT_R, headYaw),
+      headYaw
+    );
+  let phi = 0;
+  let f0 = errSum(phi);
+  for (let i = 0; i < 6 && Math.abs(f0) > 1e-5; i++) {
+    const probe = 0.05;
+    const slope = (errSum(phi + probe) - f0) / probe;
+    if (Math.abs(slope) < 1e-9) break;
+    phi -= f0 / slope;
+    f0 = errSum(phi);
+  }
+  return phi;
 }
 
 export interface ArmPose {
@@ -146,52 +236,96 @@ export interface ArmPose {
   runOut: { yaw: number; lift: number };
   /** Where the headshell parks — derived from the same geometry. */
   restPos: { x: number; z: number };
+  /** Cartridge bend for this geometry (see headYawFor) — drives the mesh. */
+  headYaw: number;
 }
 
 /** Solve groove yaws + rest pose for an arm of length `armLen` pivoting at
  * `pivot` (x/z). The pivot must sit far enough out that the stylus orbit
- * still crosses the lead-in/run-out grooves. */
+ * still crosses the lead-in/run-out grooves. Playback then interpolates the
+ * groove RADIUS linearly (constant groove pitch at 33⅓ rpm) and re-solves
+ * the yaw per frame — see TonearmArm. `headYaw` defaults to the tracking-
+ * error-optimal bend for this geometry. */
 export function armPoseFor(
   pivot: THREE.Vector2,
-  armLen: number = ARM_LEN
+  armLen: number = ARM_LEN,
+  headYaw: number = headYawFor(pivot, armLen)
 ): ArmPose {
-  const rest = stylusWorldXZ(pivot, armLen, ARM_REST_YAW);
+  const restYaw = yawForRadius(pivot, armLen, ARM_REST_R, headYaw);
+  const rest = stylusWorldXZ(pivot, armLen, restYaw, headYaw);
   return {
-    rest: { yaw: ARM_REST_YAW, lift: -0.1 },
-    leadIn: { yaw: yawForRadius(pivot, armLen, 0.86), lift: 0.005 },
-    runOut: { yaw: yawForRadius(pivot, armLen, 0.52), lift: 0.005 },
+    rest: { yaw: restYaw, lift: -0.1 },
+    leadIn: {
+      yaw: yawForRadius(pivot, armLen, GROOVE_LEAD_IN_R, headYaw),
+      lift: 0.005,
+    },
+    runOut: {
+      yaw: yawForRadius(pivot, armLen, GROOVE_RUN_OUT_R, headYaw),
+      lift: 0.005,
+    },
     restPos: { x: rest.x, z: rest.z },
+    headYaw,
   };
 }
 
 const ARM_POSE = armPoseFor(ARM_PIVOT);
 
-function useVinylLabel(coverPath: string | null | undefined) {
-  const fallback = useMemo(() => makeVinylLabelTexture(null), []);
-  const [map, setMap] = useState<THREE.CanvasTexture>(fallback);
+/** Shared no-cover, no-title label — one texture for the app's lifetime. */
+let defaultLabelTexture: THREE.CanvasTexture | null = null;
+function getDefaultLabel(): THREE.CanvasTexture {
+  if (!defaultLabelTexture) defaultLabelTexture = makeVinylLabelTexture();
+  return defaultLabelTexture;
+}
+
+/**
+ * Label texture for the current album: the cover art when it loads, else the
+ * fallback target printed with the album (folder) name + artist.
+ */
+function useVinylLabel(
+  coverPath: string | null | undefined,
+  title?: string | null,
+  artist?: string | null
+) {
+  const [map, setMap] = useState<THREE.CanvasTexture>(() => getDefaultLabel());
 
   useEffect(() => {
     let cancelled = false;
-    let tex: THREE.CanvasTexture | undefined;
-    if (!coverPath) {
-      setMap(fallback);
-      return;
+    const disposables: THREE.CanvasTexture[] = [];
+
+    const applyFallback = () => {
+      if (!title && !artist) {
+        setMap(getDefaultLabel());
+        return;
+      }
+      const tex = makeVinylLabelTexture(null, title, artist);
+      if (cancelled) {
+        tex.dispose();
+        return;
+      }
+      disposables.push(tex);
+      setMap(tex);
+    };
+
+    if (coverPath) {
+      loadImage(toAssetUrl(coverPath))
+        .then((img) => {
+          if (cancelled) return;
+          const tex = makeVinylLabelTexture(img);
+          disposables.push(tex);
+          setMap(tex);
+        })
+        .catch((err) => {
+          console.warn("[vinyl] cover load failed", err);
+          if (!cancelled) applyFallback();
+        });
+    } else {
+      applyFallback();
     }
-    loadImage(toAssetUrl(coverPath))
-      .then((img) => {
-        if (cancelled) return;
-        tex = makeVinylLabelTexture(img);
-        setMap(tex);
-      })
-      .catch((err) => {
-        console.warn("[vinyl] cover load failed", err);
-        if (!cancelled) setMap(fallback);
-      });
     return () => {
       cancelled = true;
-      tex?.dispose();
+      disposables.forEach((tex) => tex.dispose());
     };
-  }, [coverPath, fallback]);
+  }, [coverPath, title, artist]);
 
   return map;
 }
@@ -199,9 +333,14 @@ function useVinylLabel(coverPath: string | null | undefined) {
 export function VinylDisc({
   playing,
   coverPath,
+  title,
+  artist,
 }: {
   playing: boolean;
   coverPath: string | null | undefined;
+  /** Album (folder) name printed on the label when there is no cover. */
+  title?: string | null;
+  artist?: string | null;
 }) {
   const group = useRef<THREE.Group>(null);
   // Depend on the factory so HMR of vinylTexture.ts rebuilds the PBR pack.
@@ -210,7 +349,7 @@ export function VinylDisc({
     () => makeGrooveGeometry(LABEL_R - 0.001, RECORD_R),
     []
   );
-  const labelMap = useVinylLabel(coverPath);
+  const labelMap = useVinylLabel(coverPath, title, artist);
 
   useFrame((_, dt) => {
     if (!group.current || !playing) return;
@@ -372,19 +511,50 @@ function Platter() {
  * shared by the full 3D scene and the background-image overlay stage.
  * Pass a custom `pivot` (x/z) and `armLen` to re-locate / re-size the arm;
  * groove yaws are re-solved so the stylus still tracks the record.
+ *
+ * `constantScreenLength` is for stages whose camera never moves (the photo
+ * overlay): a rigid arm pointing into the depth foreshortens differently as
+ * it sweeps, so its projected length drifts ~15% across a side — on a flat
+ * composite, with no depth cues, that reads as the arm stretching. The arm
+ * group is therefore rescaled a few percent around its pivot each frame to
+ * hold the on-screen pivot→stylus distance constant, and the groove yaw is
+ * re-solved at the effective length so the stylus still lands exactly on the
+ * lead-in / run-out grooves. Never enable it where the camera can orbit.
  */
 export function TonearmArm({
   pivot = ARM_PIVOT,
   armLen = ARM_LEN,
+  constantScreenLength = false,
 }: {
   pivot?: THREE.Vector2;
   armLen?: number;
+  constantScreenLength?: boolean;
 } = {}) {
   const poses = useMemo(() => armPoseFor(pivot, armLen), [pivot, armLen]);
   const yawRef = useRef<THREE.Group>(null);
   const liftRef = useRef<THREE.Group>(null);
   const yaw = useRef(poses.rest.yaw);
   const lift = useRef(poses.rest.lift);
+
+  // Constant-screen-length compensation state (fixed-camera stages only).
+  const { camera, size } = useThree();
+  const screenLenTarget = useRef(0);
+  const screenSizeKey = useRef("");
+  const tmpA = useRef(new THREE.Vector3());
+  const tmpB = useRef(new THREE.Vector3());
+
+  /** Projected pivot→stylus distance in pixels for a rigid arm at `yaw`. */
+  const measureScreenLen = (parent: THREE.Object3D, yawAngle: number) => {
+    const a = tmpA.current.set(pivot.x, 0, pivot.y).applyMatrix4(parent.matrixWorld);
+    const s = stylusWorldXZ(pivot, armLen, yawAngle, poses.headYaw);
+    const b = tmpB.current.set(s.x, 0, s.z).applyMatrix4(parent.matrixWorld);
+    a.project(camera);
+    b.project(camera);
+    return Math.hypot(
+      (a.x - b.x) * size.width,
+      (a.y - b.y) * size.height
+    );
+  };
 
   useFrame((_, dt) => {
     if (!yawRef.current || !liftRef.current) return;
@@ -404,8 +574,52 @@ export function TonearmArm({
       liveDur
     );
 
-    const grooveYaw = THREE.MathUtils.lerp(poses.leadIn.yaw, poses.runOut.yaw, t);
-    const targetYaw = onGroove ? grooveYaw : poses.rest.yaw;
+    // Compensate foreshortening first (using last frame's yaw), so the
+    // effective length is known when solving this frame's groove yaw.
+    const parent = yawRef.current.parent;
+    let effScale = 1;
+    if (constantScreenLength && parent) {
+      parent.updateWorldMatrix(true, false);
+      const sizeKey = `${size.width}x${size.height}`;
+      if (sizeKey !== screenSizeKey.current) {
+        screenSizeKey.current = sizeKey;
+        // Hold the sweep's mean projected length: parked pose + five groove
+        // samples, so the residual (second-order perspective) stays ~1%.
+        screenLenTarget.current =
+          (measureScreenLen(parent, poses.rest.yaw) +
+            [0, 0.25, 0.5, 0.75, 1].reduce(
+              (sum, t) =>
+                sum +
+                measureScreenLen(
+                  parent,
+                  THREE.MathUtils.lerp(
+                    poses.leadIn.yaw,
+                    poses.runOut.yaw,
+                    t
+                  )
+                ),
+              0
+            )) /
+          6;
+      }
+      const measured = measureScreenLen(parent, yaw.current);
+      if (measured > 1e-6 && screenLenTarget.current > 1e-6) {
+        effScale = THREE.MathUtils.clamp(
+          screenLenTarget.current / measured,
+          0.8,
+          1.25
+        );
+        yawRef.current.scale.setScalar(effScale);
+      }
+    }
+
+    // Radius-space target: the stylus spirals inward at a constant groove
+    // pitch; yaw is solved from the radius (at the effective arm length, so
+    // compensation never displaces the needle off the grooves).
+    const grooveR = THREE.MathUtils.lerp(GROOVE_LEAD_IN_R, GROOVE_RUN_OUT_R, t);
+    const targetYaw = onGroove
+      ? yawForRadius(pivot, armLen * effScale, grooveR, poses.headYaw)
+      : poses.rest.yaw;
     const targetLift = needleDown ? poses.leadIn.lift : poses.rest.lift;
     // Light smoothing — tracks the groove closely without visible stepping.
     const k = 1 - Math.exp(-10 * dt);
@@ -441,10 +655,11 @@ export function TonearmArm({
       >
         <cylinderGeometry args={[0.05, 0.05, 0.09, 32]} />
       </mesh>
-      {/* Headshell — short paddle with a mild inward offset (real straight-arm
-          geometry: ~15° so the cartridge sits tangent to the groove, not
-          kicked out toward the rim). */}
-      <group position={[headGroupX(armLen), 0, 0]} rotation={[0, HEAD_YAW, 0]}>
+      {/* Headshell — short paddle bent by the geometry-derived offset angle
+          (see headYawFor): like a real cartridge mount, it keeps a FIXED
+          angle relative to the tube and rides with the arm, so the stylus
+          reads the groove close to its tangent across the whole side. */}
+      <group position={[headGroupX(armLen), 0, 0]} rotation={[0, poses.headYaw, 0]}>
         {/* Sleeve that overlaps the tube tip so the joint reads as one piece */}
         <mesh
           position={[0.022, 0, 0]}
@@ -453,10 +668,15 @@ export function TonearmArm({
         >
           <cylinderGeometry args={[0.0145, 0.013, 0.048, 12]} />
         </mesh>
-        {/* Thin headshell paddle, butted against the sleeve */}
-        <mesh position={[-0.028, 0.001, 0]} material={armMaterial} castShadow>
-          <boxGeometry args={[0.08, 0.011, 0.036]} />
-        </mesh>
+        {/* Headshell paddle — butts against the sleeve, carries the cartridge */}
+        <RoundedBox
+          args={[0.11, 0.012, 0.05]}
+          radius={0.004}
+          smoothness={2}
+          position={[-0.032, 0.0005, 0]}
+          material={armMaterial}
+          castShadow
+        />
         {/* Finger lift on the near side */}
         <mesh
           position={[0.006, 0.02, 0.018]}
@@ -465,25 +685,45 @@ export function TonearmArm({
         >
           <cylinderGeometry args={[0.0024, 0.0024, 0.038, 8]} />
         </mesh>
-        {/* Cartridge body tucked under the paddle */}
-        <mesh position={[-0.028, -0.018, 0]}>
-          <boxGeometry args={[0.046, 0.02, 0.026]} />
-          <meshStandardMaterial color="#1a1a1e" roughness={0.55} metalness={0.12} />
-        </mesh>
-        {/* Tiny cantilever + red stylus under the front lip */}
+        {/* Cartridge body — overlaps the paddle bottom (mounted flush, like a
+            real cartridge bolted under the headshell) */}
+        <RoundedBox
+          args={[0.062, 0.028, 0.034]}
+          radius={0.004}
+          smoothness={2}
+          position={[-0.058, -0.0185, 0]}
+          material={cartridgeMaterial}
+          castShadow
+        />
+        {/* Two mounting screws tying cartridge to paddle */}
+        {[-0.04, -0.076].map((x) => (
+          <mesh key={x} position={[x, -0.011, 0]} material={steelMaterial}>
+            <cylinderGeometry args={[0.0032, 0.0032, 0.016, 8]} />
+          </mesh>
+        ))}
+        {/* Replaceable stylus assembly — nose poking out of the body front */}
         <mesh
-          position={[-0.052, -0.028, 0]}
-          rotation={[0, 0, 0.4]}
+          position={[-0.088, -0.026, 0]}
+          material={stylusAssemblyMaterial}
+          castShadow
+        >
+          <boxGeometry args={[0.014, 0.012, 0.02]} />
+        </mesh>
+        {/* Cantilever: thin steel tube from the nose, angling down-forward */}
+        <mesh
+          position={[-0.0937, -0.0355, 0]}
+          rotation={[0, 0, -2.51]}
           material={steelMaterial}
         >
-          <cylinderGeometry args={[0.0016, 0.0016, 0.018, 6]} />
+          <boxGeometry args={[0.016, 0.0028, 0.0028]} />
         </mesh>
+        {/* Needle — red tip at the cantilever end, just reaching the groove */}
         <mesh
-          position={[-0.06, -0.04, 0]}
-          rotation={[Math.PI, 0, 0.15]}
+          position={[-0.099, -0.042, 0]}
+          rotation={[Math.PI, 0, -0.45]}
           material={stylusMaterial}
         >
-          <coneGeometry args={[0.004, 0.012, 8]} />
+          <coneGeometry args={[0.0032, 0.011, 8]} />
         </mesh>
       </group>
       </group>
@@ -602,7 +842,12 @@ export function Turntable() {
       <Plinth />
       <Platter />
       <CenterGlow playing={active} />
-      <VinylDisc playing={active} coverPath={coverPath} />
+      <VinylDisc
+        playing={active}
+        coverPath={coverPath}
+        title={album?.name ?? null}
+        artist={album?.artist ?? null}
+      />
       <Tonearm />
     </group>
   );
