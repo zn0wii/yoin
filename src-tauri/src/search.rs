@@ -1,6 +1,7 @@
 //! Album download: fetches every track's playback URL from NetEase's
 //! official API (via `netease_client`) and writes them to disk under
-//! `music/downloads/<artist>/<album>/`, alongside the cover art.
+//! `music/<artist>/<album>/`, alongside the cover art — same layout
+//! `scan_library` expects, so the vinyl shelf shows the real artist name.
 
 use crate::netease_client::{self, NeteaseSession};
 use serde::{Deserialize, Serialize};
@@ -48,6 +49,14 @@ fn sanitize_filename(name: &str) -> String {
     }
 }
 
+/// True when `dest` already holds a non-empty file — used to skip re-downloads
+/// so a partial album retry does not overwrite songs that already succeeded.
+fn file_already_downloaded(dest: &PathBuf) -> bool {
+    std::fs::metadata(dest)
+        .map(|m| m.is_file() && m.len() > 0)
+        .unwrap_or(false)
+}
+
 async fn download_to_file(
     client: &reqwest::Client,
     url: &str,
@@ -65,26 +74,25 @@ async fn download_to_file(
     std::fs::write(dest, &bytes).map_err(|e| format!("failed to write {}: {e}", dest.display()))
 }
 
-/// Resolve `<app>/music/downloads` (dev: project-root `music/downloads`;
-/// bundled: resource-dir `music/downloads`) — the same root `scan_library`
-/// already walks, so a fresh download shows up on next rescan.
-fn downloads_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let music_dir = if cfg!(debug_assertions) {
+/// Resolve the library root `<app>/music` (dev: project-root `music`;
+/// bundled: resource-dir `music`) — albums land at `music/<artist>/<album>/`
+/// so `scan_library` picks up the real artist folder name.
+fn music_library_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir
+        Ok(manifest_dir
             .parent()
             .ok_or("cannot resolve project root")?
-            .join("music")
+            .join("music"))
     } else {
         app.path()
             .resource_dir()
             .map(|dir| dir.join("music"))
-            .map_err(|e| format!("failed to resolve resource dir: {e}"))?
-    };
-    Ok(music_dir.join("downloads"))
+            .map_err(|e| format!("failed to resolve resource dir: {e}"))
+    }
 }
 
-/// Download every track in `tracks` into `downloads/<artist>/<album>/`,
+/// Download every track in `tracks` into `music/<artist>/<album>/`,
 /// writing sequential `NN - title.mp3` files plus a shared `cover.jpg`.
 /// Emits `download-progress` events as tracks complete. Allow-lists the
 /// target folder on the asset protocol scope so it can be scanned/played
@@ -103,7 +111,7 @@ pub async fn download_album<R: Runtime>(
     }
 
     let client = http_client()?;
-    let root = downloads_dir(&app)?;
+    let root = music_library_dir(&app)?;
     let album_dir = root
         .join(sanitize_filename(&artist))
         .join(sanitize_filename(&album));
@@ -112,13 +120,22 @@ pub async fn download_album<R: Runtime>(
 
     if let Some(cover_url) = cover_url.filter(|u| !u.is_empty()) {
         let cover_path = album_dir.join("cover.jpg");
-        let _ = download_to_file(&client, &cover_url, &cover_path).await;
+        if !file_already_downloaded(&cover_path) {
+            let _ = download_to_file(&client, &cover_url, &cover_path).await;
+        }
     }
 
     let total = tracks.len();
     let mut failed: Vec<String> = Vec::new();
 
     for (i, track) in tracks.iter().enumerate() {
+        let filename = format!(
+            "{:02} - {}.mp3",
+            i + 1,
+            sanitize_filename(&track.title)
+        );
+        let dest = album_dir.join(&filename);
+
         let _ = app.emit(
             "download-progress",
             DownloadProgress {
@@ -128,6 +145,11 @@ pub async fn download_album<R: Runtime>(
                 current_title: track.title.clone(),
             },
         );
+
+        // Retry after a partial failure: keep existing successes intact.
+        if file_already_downloaded(&dest) {
+            continue;
+        }
 
         match netease_client::song_play_url(
             &client,
@@ -139,12 +161,6 @@ pub async fn download_album<R: Runtime>(
         .await
         {
             Ok(Some(track_url)) => {
-                let filename = format!(
-                    "{:02} - {}.mp3",
-                    i + 1,
-                    sanitize_filename(&track.title)
-                );
-                let dest = album_dir.join(filename);
                 if let Err(e) = download_to_file(&client, &track_url, &dest).await {
                     failed.push(format!("{}: {e}", track.title));
                 }
@@ -179,5 +195,35 @@ pub async fn download_album<R: Runtime>(
             total,
             failed.join("; ")
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn skips_existing_non_empty_file_only() {
+        let dir = std::env::temp_dir().join(format!(
+            "yoin-dl-skip-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let present = dir.join("01 - a.mp3");
+        let empty = dir.join("02 - b.mp3");
+        let missing = dir.join("03 - c.mp3");
+        std::fs::File::create(&present)
+            .unwrap()
+            .write_all(b"mp3")
+            .unwrap();
+        std::fs::File::create(&empty).unwrap();
+        assert!(file_already_downloaded(&present));
+        assert!(!file_already_downloaded(&empty));
+        assert!(!file_already_downloaded(&missing));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

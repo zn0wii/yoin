@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { audioEngine } from "./audioEngine";
+import { getSongPlayUrl } from "./searchApi";
 import { trackKey, trackWindow } from "./albumProgress";
 import {
   deriveTrackDurations,
@@ -35,9 +36,50 @@ export function useAudioSync() {
   useAlbumDurations(currentAlbum);
 
   // Load the current track whenever it changes. CUE tracks may share one
-  // file — switching between them just moves the playback window.
+  // file — switching between them just moves the playback window. Online
+  // tracks may arrive with only `onlineSongId`; fetch a CDN url first, then
+  // this effect re-runs once `path` is filled in.
   useEffect(() => {
     if (!currentTrack || !hasSelection || !currentAlbum) return;
+
+    if (!currentTrack.path && currentTrack.onlineSongId) {
+      let cancelled = false;
+      const songId = currentTrack.onlineSongId;
+      const title = currentTrack.title;
+      const artist = currentAlbum.artist ?? undefined;
+      (async () => {
+        try {
+          const url = await getSongPlayUrl(songId, title, artist);
+          if (cancelled) return;
+          if (!url) {
+            setIsPlaying(false);
+            return;
+          }
+          const s = usePlayerStore.getState();
+          const albumIndex = s.currentAlbumIndex;
+          const trackIndex = s.currentTrackIndex;
+          const nextAlbums = s.albums.map((a, i) => {
+            if (i !== albumIndex) return a;
+            return {
+              ...a,
+              tracks: a.tracks.map((t, j) =>
+                j === trackIndex ? { ...t, path: url } : t
+              ),
+            };
+          });
+          s.setAlbums(nextAlbums, s.musicDir);
+        } catch (err) {
+          console.error("[audio] online url fetch failed", err);
+          if (!cancelled) setIsPlaying(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!currentTrack.path) return;
+
     const { start, end } = trackWindow(currentAlbum, currentTrackIndex);
     audioEngine.setWindow(start, end);
     if (loadedPathRef.current === currentTrack.path) {
@@ -67,7 +109,7 @@ export function useAudioSync() {
     return () => {
       cancelled = true;
     };
-  }, [currentTrack, currentTrackIndex, hasSelection, setIsPlaying, setTrackDuration]);
+  }, [currentTrack, currentTrackIndex, hasSelection, currentAlbum, setIsPlaying, setTrackDuration]);
 
   // React to play/pause intent.
   useEffect(() => {
@@ -102,17 +144,26 @@ export function useAudioSync() {
     });
   }, [setTime, setTrackDuration]);
 
-  // Advance to the next track when the current one finishes — unless it's
-  // an online-search album and the next track has no known playback url yet
-  // (only the just-fetched track has `path` filled in; NetEase CDN links
-  // are time-limited and fetched on demand, not prefetched for the whole
-  // album), in which case just stop.
+  // Advance to the next track when the current one finishes. Online tracks
+  // without a cached `path` still advance if they have `onlineSongId` — the
+  // load effect above fetches a fresh CDN url before playing.
   useEffect(() => {
     return audioEngine.onEnded(() => {
       const s = usePlayerStore.getState();
       const album = s.albums[s.currentAlbumIndex];
-      const nextIndex = (s.currentTrackIndex + 1) % (album?.tracks.length ?? 1);
-      if (album && !album.tracks[nextIndex]?.path) {
+      if (!album || album.tracks.length === 0) {
+        setIsPlaying(false);
+        return;
+      }
+      const nextIndex = (s.currentTrackIndex + 1) % album.tracks.length;
+      // Stop at end of online albums instead of looping into track 0, so
+      // "play whole album" means play through once.
+      if (album.onlineId && nextIndex === 0) {
+        setIsPlaying(false);
+        return;
+      }
+      const next = album.tracks[nextIndex];
+      if (!next?.path && !next?.onlineSongId) {
         setIsPlaying(false);
         return;
       }

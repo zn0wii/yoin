@@ -5,6 +5,9 @@ export interface Track {
   path: string;
   /** Start offset (seconds) into `path` — CUE tracks share one file. */
   start?: number;
+  /** NetEase song id for online-search tracks — `path` is filled on demand
+   *  (CDN urls expire; only the playing track needs a fresh one). */
+  onlineSongId?: string;
 }
 
 export interface Album {
@@ -120,11 +123,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const album = albums[currentAlbumIndex];
     if (!album) return;
     const nextIndex = (currentTrackIndex + 1) % album.tracks.length;
-    // Online-search albums only have a `path` for tracks the user has
-    // already played (NetEase CDN urls are fetched on demand, not
-    // prefetched for the whole album) — skipping to an unfetched one would
-    // just fail to load, so stay put instead.
-    if (!album.tracks[nextIndex]?.path) return;
+    const next = album.tracks[nextIndex];
+    // Local tracks always have `path`. Online tracks may only have
+    // `onlineSongId` until the load effect fetches a fresh CDN url.
+    if (!next?.path && !next?.onlineSongId) return;
     set({
       currentTrackIndex: nextIndex,
       currentTime: 0,
@@ -135,7 +137,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const album = albums[currentAlbumIndex];
     if (!album) return;
     const prevIndex = (currentTrackIndex - 1 + album.tracks.length) % album.tracks.length;
-    if (!album.tracks[prevIndex]?.path) return;
+    const prev = album.tracks[prevIndex];
+    if (!prev?.path && !prev?.onlineSongId) return;
     set({
       currentTrackIndex: prevIndex,
       currentTime: 0,

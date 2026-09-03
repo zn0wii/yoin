@@ -43,6 +43,14 @@ function IconBack() {
   );
 }
 
+function IconPlay() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden>
+      <path d="M4.2 2.8v10.4L13.2 8 4.2 2.8z" fill="currentColor" />
+    </svg>
+  );
+}
+
 function formatDuration(seconds: number | null): string {
   if (!seconds || !Number.isFinite(seconds)) return "--:--";
   const total = Math.round(seconds);
@@ -114,9 +122,13 @@ function AlbumDetailView({
           setError(`《${track.title}》无可用播放地址（可能需要会员或已下架）`);
           return;
         }
-        const onlineTracks: Track[] = detail.tracks.map((t) => ({
+        const existing = albums.find((a) => a.onlineId === album.id);
+        // Keep already-resolved sibling urls so album play-through can reuse
+        // them; every track carries `onlineSongId` for on-demand fetch.
+        const onlineTracks: Track[] = detail.tracks.map((t, i) => ({
           title: t.title,
-          path: t.id === track.id ? url : "",
+          path: t.id === track.id ? url : existing?.tracks[i]?.path ?? "",
+          onlineSongId: t.id,
         }));
         const onlineAlbum: Album = {
           name: detail.name,
@@ -141,6 +153,11 @@ function AlbumDetailView({
     },
     [detail, album.id, albums, setAlbums, musicDir, selectTrack]
   );
+
+  const handlePlayAll = useCallback(() => {
+    if (!detail || detail.tracks.length === 0) return;
+    void handlePlay(detail.tracks[0], 0);
+  }, [detail, handlePlay]);
 
   const handleDownload = useCallback(async () => {
     if (!detail || downloading) return;
@@ -188,6 +205,15 @@ function AlbumDetailView({
             ) : (
               <div className="album-detail-cover album-detail-cover-empty" />
             )}
+            <button
+              className="album-detail-play-all"
+              onClick={handlePlayAll}
+              disabled={playingId !== null || detail.tracks.length === 0}
+              title="播放整张专辑"
+              aria-label="播放整张专辑"
+            >
+              <IconPlay />
+            </button>
             <div className="album-detail-info">
               <div className="album-detail-name">{detail.name}</div>
               <div className="album-detail-artist">{detail.artist || "未知歌手"}</div>
@@ -212,28 +238,33 @@ function AlbumDetailView({
           <ul className="album-detail-track-list">
             {detail.tracks.map((track, i) => {
               const isActive = isCurrentOnlineAlbum && currentTrackIndex === i;
+              const isBusy = playingId === track.id;
               return (
                 <li
-                  className={`album-detail-track${isActive ? " active" : ""}`}
+                  className={`album-detail-track${isActive ? " active" : ""}${isBusy ? " busy" : ""}`}
                   key={track.id}
+                  onClick={() => {
+                    if (playingId) return;
+                    void handlePlay(track, i);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      if (!playingId) void handlePlay(track, i);
+                    }
+                  }}
+                  aria-label={`播放 ${track.title}`}
+                  aria-disabled={playingId !== null}
                 >
-                  <span className="album-detail-track-no">{track.trackNo}</span>
+                  <span className="album-detail-track-no">
+                    {isActive && isPlaying ? "▶" : isBusy ? "…" : track.trackNo}
+                  </span>
                   <span className="album-detail-track-title">{track.title}</span>
                   <span className="album-detail-track-duration">
                     {formatDuration(track.duration)}
                   </span>
-                  <button
-                    className="album-detail-track-play"
-                    onClick={() => handlePlay(track, i)}
-                    disabled={playingId === track.id}
-                    aria-label={`播放 ${track.title}`}
-                  >
-                    {isActive && isPlaying
-                      ? "▶ 播放中"
-                      : playingId === track.id
-                      ? "…"
-                      : "播放"}
-                  </button>
                 </li>
               );
             })}
@@ -297,7 +328,7 @@ export function SearchPanel({ onDownloaded }: { onDownloaded: () => void }) {
           name: song.title,
           artist: song.artist,
           cover: song.coverUrl || null,
-          tracks: [{ title: song.title, path: url }],
+          tracks: [{ title: song.title, path: url, onlineSongId: song.id }],
           onlineId,
         };
         const existingIndex = albums.findIndex((a) => a.onlineId === onlineId);
