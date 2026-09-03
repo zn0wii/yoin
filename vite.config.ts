@@ -287,12 +287,14 @@ export default defineConfig(async () => ({
         }
       : undefined,
       watch: {
-        // 3. tell Vite to ignore watching `src-tauri`
-        //    plus anything under `assets/` (glob matching proved unreliable for
-        //    deeply nested new files on Windows — a normalized-path function is
-        //    airtight against EBUSY crashes from files locked by other apps)
+        // 3. tell Vite to ignore watching `src-tauri`, `music/` and anything
+        //    under `assets/` (glob matching proved unreliable for deeply
+        //    nested new files on Windows — a normalized-path function is
+        //    airtight against EBUSY crashes from files locked by other apps;
+        //    `music/` is only read per-request by the demo-library middleware)
         ignored: [
           "**/src-tauri/**",
+          "**/music/**",
           (path: string) => {
             const p = path.replace(/\\/g, "/");
             return /\/assets$/.test(p) || /\/assets\//.test(p);
