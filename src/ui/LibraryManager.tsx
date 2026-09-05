@@ -295,11 +295,6 @@ export function LibraryManager({
             <IconFolder />
             <span>{newPath ? "重选路径" : "选择路径"}</span>
           </button>
-          {newPath ? (
-            <span className="lib-manager-path" title={newPath}>
-              {newPath}
-            </span>
-          ) : null}
           <button
             className="lib-manager-add-btn"
             onClick={handleAdd}
@@ -309,6 +304,11 @@ export function LibraryManager({
             <IconPlus />
             <span>添加</span>
           </button>
+          {newPath ? (
+            <span className="lib-manager-path" title={newPath}>
+              {newPath}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

@@ -109,15 +109,6 @@ function IconRepeat() {
   );
 }
 
-function IconQueue() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden>
-      <rect x="4" y="6" width="12" height="12" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      <path fill="none" stroke="currentColor" strokeWidth="1.6" d="M9 4h10.2A1.8 1.8 0 0 1 21 5.8V16" />
-    </svg>
-  );
-}
-
 function IconList() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
@@ -357,12 +348,9 @@ export function ControlPanel() {
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
   const currentTrackIndex = usePlayerStore((s) => s.currentTrackIndex);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const isLoading = usePlayerStore((s) => s.isLoading);
-  const error = usePlayerStore((s) => s.error);
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
   const prevTrack = usePlayerStore((s) => s.prevTrack);
-  const toggleLibraryManager = usePlayerStore((s) => s.toggleLibraryManager);
   const shuffle = usePlayerStore((s) => s.shuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const repeatMode = usePlayerStore((s) => s.repeatMode);
@@ -471,14 +459,6 @@ export function ControlPanel() {
         <VolumeSlider />
 
         <div className="player-tools">
-          <button
-            onClick={toggleLibraryManager}
-            disabled={isLoading}
-            title={error ?? (isLoading ? "扫描中…" : "库管理")}
-            aria-label="库管理"
-          >
-            <IconQueue />
-          </button>
           <button title="Queue" aria-label="Queue" type="button">
             <IconList />
           </button>

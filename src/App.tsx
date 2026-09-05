@@ -1,4 +1,5 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { usePlayerStore } from "./store/playerStore";
 import { useAudioSync } from "./audio/useAudioSync";
 import { getDefaultMusicDir, scanLibrary } from "./audio/libraryApi";
@@ -30,6 +31,14 @@ function App() {
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
 
   useAudioSync();
+
+  // App version from the Tauri bundle (plain-browser dev has none).
+  const [appVersion, setAppVersion] = useState("…");
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion("dev"));
+  }, []);
 
   // Resolve the bundled default music dir once, for display in the manager
   // (null in plain-browser dev — the demo library fallback kicks in there).
@@ -101,6 +110,10 @@ function App() {
       <main className="app-main">
         <VinylStage />
       </main>
+      <div className="app-brand" aria-hidden>
+        <span className="app-brand-name">余韻</span>
+        <span className="app-brand-version">v{appVersion}</span>
+      </div>
       <LibraryNav />
       {libraryOpen && !searchOpen ? <AlbumGrid /> : null}
       {!libraryOpen && !searchOpen ? <NowPlayingArt /> : null}

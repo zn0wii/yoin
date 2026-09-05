@@ -1,0 +1,69 @@
+name: Release
+
+# Publishing a tag (v*) builds signed-free installers for macOS (Apple
+# Silicon + Intel) and Windows, then attaches them to a draft GitHub
+# release for review before publishing.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-draft:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon runner
+            args: --target aarch64-apple-darwin
+            rust-target: aarch64-apple-darwin
+          - platform: macos-latest # cross-compiles Intel from the arm runner
+            args: --target x86_64-apple-darwin
+            rust-target: x86_64-apple-darwin
+          - platform: windows-latest # x86_64-pc-windows-msvc
+            args: ""
+            rust-target: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and upload to draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Yoin ${{ github.ref_name }}"
+          releaseBody: "见 Assets 下载对应平台的安装包。"
+          releaseDraft: true
+          prerelease: false
+          # Tags may carry a version newer than tauri.conf.json's — skip the
+          # strict tag↔conf version match (bump conf when convenient).
+          appVersionCheck: false
+          args: ${{ matrix.args }}

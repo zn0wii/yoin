@@ -3,7 +3,8 @@
   z-index: 2;
   left: 176px;
   right: 300px;
-  top: 20px;
+  /* Sits just under the top-left brand line (余韻 at top:14). */
+  top: 18px;
   height: auto;
   pointer-events: none;
 }

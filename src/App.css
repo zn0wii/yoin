@@ -25,6 +25,34 @@ body,
   background: transparent;
 }
 
+/* Top-left brand: 余韻 + version, floating on the scene. */
+.app-brand {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 20px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  pointer-events: none;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.app-brand-name {
+  font-size: 22px;
+  font-weight: 640;
+  letter-spacing: 0.1em;
+  color: #f7f1ea;
+}
+
+.app-brand-version {
+  font-size: 11px;
+  color: rgba(247, 241, 234, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
 .vinyl-stage {
   position: absolute;
   inset: 0;
@@ -75,6 +103,11 @@ body,
     --nav-w: 120px;
     --player-space: 96px;
     --tracks-h: 34vh;
+  }
+
+  .app-brand {
+    top: var(--ui-inset);
+    left: var(--ui-inset);
   }
 
   .app-sidebar {

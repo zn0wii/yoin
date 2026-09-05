@@ -238,7 +238,8 @@
 }
 
 .lib-manager-name-input {
-  flex: 1 1 140px;
+  /* Absorbs all leftover width so the row spans edge to edge. */
+  flex: 1 1 130px;
   min-width: 0;
   height: 38px;
   padding: 0 12px;
@@ -275,6 +276,8 @@
   font-weight: 560;
   cursor: pointer;
   font-family: inherit;
+  /* Keep the label on one line even when the row gets tight. */
+  white-space: nowrap;
 }
 
 .lib-manager-pick svg {
