@@ -22,8 +22,10 @@ jobs:
           - platform: macos-latest # cross-compiles Intel from the arm runner
             args: --target x86_64-apple-darwin
             rust-target: x86_64-apple-darwin
-          - platform: windows-latest # x86_64-pc-windows-msvc
-            args: ""
+          - platform: windows-latest # x86_64-pc-windows-msvc; NSIS only —
+            # WiX3's light.exe fails on CI runners, and NSIS is Tauri's
+            # recommended Windows installer anyway.
+            args: --bundles nsis
             rust-target: ""
     runs-on: ${{ matrix.platform }}
     steps:
