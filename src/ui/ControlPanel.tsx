@@ -159,6 +159,7 @@ function IconPalette() {
 
 /** Disc tint modes offered in the popover. */
 const DISC_MODES: { value: DiscColorMode; label: string }[] = [
+  { value: "default", label: "默认" },
   { value: "auto", label: "跟随专辑" },
   { value: "manual", label: "手动选择" },
   { value: "pulse", label: "随音乐律动" },

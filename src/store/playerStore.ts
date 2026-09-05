@@ -15,8 +15,8 @@ function loadBackgroundIndex(): number {
 }
 
 /** How the 3D record's color is chosen. */
-export type DiscColorMode = "auto" | "manual" | "pulse";
-const DISC_MODES: DiscColorMode[] = ["auto", "manual", "pulse"];
+export type DiscColorMode = "default" | "auto" | "manual" | "pulse";
+const DISC_MODES: DiscColorMode[] = ["default", "auto", "manual", "pulse"];
 
 const DISC_MODE_KEY = "yoin:disc-mode";
 const DISC_HUE_KEY = "yoin:disc-hue";
@@ -26,9 +26,9 @@ export const DEFAULT_DISC_HUE = 350;
 function loadDiscColorMode(): DiscColorMode {
   try {
     const v = localStorage.getItem(DISC_MODE_KEY);
-    return DISC_MODES.includes(v as DiscColorMode) ? (v as DiscColorMode) : "auto";
+    return DISC_MODES.includes(v as DiscColorMode) ? (v as DiscColorMode) : "default";
   } catch {
-    return "auto";
+    return "default";
   }
 }
 

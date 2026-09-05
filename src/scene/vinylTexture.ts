@@ -11,9 +11,24 @@ const BORDER_LUMA = 245;
 
 export type VinylGrooveMaps = {
   map: THREE.DataTexture;
+  /** The original pink-baked albedo — the pre-custom-color "默认" look. */
+  legacyMap: THREE.DataTexture;
   normalMap: THREE.DataTexture;
   roughnessMap: THREE.DataTexture;
 };
+
+/** The original (pre-custom-color) pink ramp, restored verbatim from the
+ *  earliest version: pinker near the label, paler toward the rim. */
+const VINYL_STOPS_ORIGINAL: { t: number; r: number; g: number; b: number }[] = [
+  { t: 0.0, r: 204, g: 118, b: 138 },
+  { t: 0.06, r: 220, g: 122, b: 142 },
+  { t: 0.22, r: 232, g: 136, b: 154 },
+  { t: 0.48, r: 236, g: 150, b: 164 },
+  { t: 0.75, r: 238, g: 168, b: 178 },
+  { t: 0.92, r: 240, g: 186, b: 194 },
+  { t: 0.98, r: 236, g: 178, b: 188 },
+  { t: 1.0, r: 220, g: 150, b: 164 },
+];
 
 /** Opaque grayscale luminance ramp (t = 0 at label edge, 1 at rim). The hue
  *  lives in material.color (final albedo = map × color), so the disc can be
@@ -35,12 +50,15 @@ const VINYL_STOPS: { t: number; r: number; g: number; b: number }[] = [
  *  original pink (calibrated at the mid-groove stop, 236 × #ffa2b1 ≈ pink). */
 export const DEFAULT_DISC_TINT = "#ffa2b1";
 
-function lerpStops(t: number): { r: number; g: number; b: number } {
+function lerpStops(
+  t: number,
+  stops: { t: number; r: number; g: number; b: number }[] = VINYL_STOPS
+): { r: number; g: number; b: number } {
   const x = Math.min(1, Math.max(0, t));
   let i = 0;
-  while (i < VINYL_STOPS.length - 2 && VINYL_STOPS[i + 1].t < x) i++;
-  const a = VINYL_STOPS[i];
-  const b = VINYL_STOPS[i + 1];
+  while (i < stops.length - 2 && stops[i + 1].t < x) i++;
+  const a = stops[i];
+  const b = stops[i + 1];
   const u = (x - a.t) / Math.max(1e-6, b.t - a.t);
   return {
     r: a.r + (b.r - a.r) * u,
@@ -97,6 +115,7 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
   const amp = 0.28;
 
   const albedo = new Uint8Array(size * size * 4);
+  const albedoLegacy = new Uint8Array(size * size * 4);
   const normal = new Uint8Array(size * size * 4);
   const rough = new Uint8Array(size * size * 4);
 
@@ -141,6 +160,10 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
         albedo[i + 1] = 0;
         albedo[i + 2] = 0;
         albedo[i + 3] = 0;
+        albedoLegacy[i] = 0;
+        albedoLegacy[i + 1] = 0;
+        albedoLegacy[i + 2] = 0;
+        albedoLegacy[i + 3] = 0;
         normal[i] = flatN;
         normal[i + 1] = flatN;
         normal[i + 2] = 255;
@@ -168,12 +191,22 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
       const rC = Math.min(255, Math.max(0, col.r + lift + silver));
       const gC = rC;
       const bC = rC;
+      // Original pink bake: per-channel groove lift (restored verbatim).
+      const colL = lerpStops(t, VINYL_STOPS_ORIGINAL);
+      const rL = Math.min(255, Math.max(0, colL.r + lift + silver));
+      const gL = Math.min(255, Math.max(0, colL.g + lift * 0.75 + silver));
+      const bL = Math.min(255, Math.max(0, colL.b + lift * 0.8 + silver * 0.95));
       const aa = r > discPx ? Math.max(0, 1 - (r - discPx)) : 1;
 
       albedo[i] = rC;
       albedo[i + 1] = gC;
       albedo[i + 2] = bC;
       albedo[i + 3] = 255 * aa;
+
+      albedoLegacy[i] = rL;
+      albedoLegacy[i + 1] = gL;
+      albedoLegacy[i + 2] = bL;
+      albedoLegacy[i + 3] = 255 * aa;
 
       // Tangent-space normal from radial height. nz stays ~1 (shallow grooves).
       const invR = r > 0.25 ? 1 / r : 0;
@@ -200,9 +233,109 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
 
   return {
     map: toDataTexture(albedo, size, true),
+    legacyMap: toDataTexture(albedoLegacy, size, true),
     normalMap: toDataTexture(normal, size, false),
     roughnessMap: toDataTexture(rough, size, false),
   };
+}
+
+/* --- Custom-hue tint ramp --------------------------------------------------
+ * The original pink bake's radial chroma profile (pinker near the label,
+ * paler toward the rim), re-hued on demand and applied inside the face
+ * shader: RGB = original stops re-hued to the tint, A = the matching
+ * grayscale stop in LINEAR bytes (sRGB textures leave alpha undecoded),
+ * so the shader can lift the groove silver back on top. */
+
+const RAMP_N = 256;
+
+export interface TintRamp {
+  tex: THREE.DataTexture;
+  /** Re-hue the ramp; tint given in LINEAR working-space rgb (0–1). */
+  update: (r: number, g: number, b: number) => void;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rr = r / 255;
+  const gg = g / 255;
+  const bb = b / 255;
+  const max = Math.max(rr, gg, bb);
+  const min = Math.min(rr, gg, bb);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === rr) h = ((gg - bb) / d + (gg < bb ? 6 : 0)) / 6;
+  else if (max === gg) h = ((bb - rr) / d + 2) / 6;
+  else h = ((rr - gg) / d + 4) / 6;
+  return [h, s, l];
+}
+
+function hueToRgb(p: number, q: number, t: number): number {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s === 0) return [l, l, l];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [hueToRgb(p, q, h + 1 / 3), hueToRgb(p, q, h), hueToRgb(p, q, h - 1 / 3)];
+}
+
+function srgbByteToLinearByte(v: number): number {
+  const c = v / 255;
+  const lin = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return Math.round(Math.min(255, Math.max(0, lin * 255)));
+}
+
+export function makeTintRamp(): TintRamp {
+  const data = new Uint8Array(RAMP_N * 4);
+  const tex = new THREE.DataTexture(data, RAMP_N, 1, THREE.RGBAFormat);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+
+  // Texel index → label→rim stop parameter (same mapping the albedo uses).
+  const ts = new Float32Array(RAMP_N);
+  for (let i = 0; i < RAMP_N; i++) {
+    const f = i / (RAMP_N - 1);
+    ts[i] = Math.min(1, Math.max(0, (f - LABEL_OF_DISC) / (1 - LABEL_OF_DISC)));
+  }
+
+  const linToSrgb = (c: number) =>
+    c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+
+  const update = (r: number, g: number, b: number) => {
+    // Extract the hue from the (linear) tint in sRGB terms.
+    const [th] = rgbToHsl(
+      Math.round(linToSrgb(r) * 255),
+      Math.round(linToSrgb(g) * 255),
+      Math.round(linToSrgb(b) * 255)
+    );
+    for (let i = 0; i < RAMP_N; i++) {
+      const o = lerpStops(ts[i], VINYL_STOPS_ORIGINAL);
+      const [, s, l] = rgbToHsl(o.r, o.g, o.b);
+      const [rr, gg, bb] = hslToRgb(th, s, l);
+      data[i * 4] = Math.round(rr * 255);
+      data[i * 4 + 1] = Math.round(gg * 255);
+      data[i * 4 + 2] = Math.round(bb * 255);
+      data[i * 4 + 3] = srgbByteToLinearByte(lerpStops(ts[i]).r);
+    }
+    tex.needsUpdate = true;
+  };
+
+  const stock = new THREE.Color(DEFAULT_DISC_TINT);
+  update(stock.r, stock.g, stock.b);
+  return { tex, update };
 }
 
 function smooth01(x: number) {

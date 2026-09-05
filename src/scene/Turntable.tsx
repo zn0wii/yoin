@@ -13,6 +13,7 @@ import {
   loadImage,
   makeGlowTexture,
   makePlatterTexture,
+  makeTintRamp,
   makeVinylGrooveMaps,
   makeVinylLabelTexture,
 } from "./vinylTexture";
@@ -332,11 +333,17 @@ function useVinylLabel(
   return map;
 }
 
+/** The original (pre-custom-color) fixed record palette — the "默认" mode. */
+export const ORIGINAL_EDGE_TINT = "#e8a0b0";
+const ORIGINAL_SHEEN = "#ffe8ee";
+const ORIGINAL_SPEC = "#fffafb";
+
 /**
  * Resolve the 3D record's tint from the store's disc-color mode:
- * auto = the cover's sheer tone, manual = the picked hue, pulse = the stock
- * base (hue travel happens per-frame inside VinylDisc). Falls back to the
- * stock rose-quartz when there is no cover or extraction fails.
+ * default = the original fixed rose-quartz (exact legacy colors), auto = the
+ * cover's sheer tone, manual = the picked hue, pulse = the stock base (hue
+ * travel happens per-frame inside VinylDisc). Falls back to the stock
+ * rose-quartz when there is no cover or extraction fails.
  */
 export function useDiscTint(coverPath: string | null | undefined): string {
   const mode = usePlayerStore((s) => s.discColorMode);
@@ -344,6 +351,7 @@ export function useDiscTint(coverPath: string | null | undefined): string {
   // Always called (stable hook order); cached after the first extraction.
   const palette = useVinylPalette(coverPath ? toAssetUrl(coverPath) : null);
 
+  if (mode === "default") return ORIGINAL_EDGE_TINT;
   if (mode === "manual") return sheerHueHex(manualHue);
   if (mode === "pulse") return DEFAULT_DISC_TINT;
   return palette?.sheer ?? DEFAULT_DISC_TINT;
@@ -373,8 +381,12 @@ export function VinylDisc({
   pulse?: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
+  const discMode = usePlayerStore((s) => s.discColorMode);
   // Depend on the factory so HMR of vinylTexture.ts rebuilds the PBR pack.
   const grooves = useMemo(() => makeVinylGrooveMaps(), [makeVinylGrooveMaps]);
+  // Custom-hue dyeing: 1D chroma-profile LUT fed to the face shader.
+  const ramp = useMemo(() => makeTintRamp(), []);
+  const faceShader = useRef<THREE.WebGLProgramParametersWithUniforms | null>(null);
   const grooveGeo = useMemo(
     () => makeGrooveGeometry(LABEL_R - 0.001, RECORD_R),
     []
@@ -389,6 +401,7 @@ export function VinylDisc({
   const faceMat = useRef<THREE.MeshPhysicalMaterial>(null);
   const targetColor = useMemo(() => new THREE.Color(tint), []);
   const sheenTarget = useMemo(() => new THREE.Color(), []);
+  const specTarget = useMemo(() => new THREE.Color(), []);
   // Pulse state: current hue phase (0–1) + smoothed audio amplitude.
   const pulseHue = useRef(Math.random());
   const pulseLevel = useRef(0);
@@ -400,7 +413,11 @@ export function VinylDisc({
   });
 
   useFrame((_, dt) => {
-    if (pulse) {
+    // "默认" mode: the exact fixed legacy palette, ignoring tint/pulse.
+    const isDefault = usePlayerStore.getState().discColorMode === "default";
+    if (isDefault) {
+      targetColor.set(ORIGINAL_EDGE_TINT);
+    } else if (pulse) {
       if (playing) pulseHue.current = (pulseHue.current + dt / PULSE_PERIOD) % 1;
       const amp = playing ? audioEngine.getAmplitude() : 0;
       pulseLevel.current = THREE.MathUtils.lerp(
@@ -417,11 +434,26 @@ export function VinylDisc({
       targetColor.set(tint);
     }
     const k = 1 - Math.exp(-4 * dt);
+    // "默认": fixed legacy palette (edge dye + fixed sheen/spec). Custom
+    // modes dye the whole face through the shader ramp — the original pink
+    // bake's chroma profile rebuilt in the chosen hue — plus the same
+    // edge/sheen treatment.
     edgeMat.current?.color.lerp(targetColor, k);
-    faceMat.current?.color.lerp(targetColor, k);
-    // Sheen stays a whiter version of the tint so highlights read as light.
-    sheenTarget.copy(targetColor).lerp(WHITE, 0.8);
+    if (isDefault) {
+      sheenTarget.set(ORIGINAL_SHEEN);
+      specTarget.set(ORIGINAL_SPEC);
+    } else {
+      sheenTarget.copy(targetColor).lerp(WHITE, 0.82);
+      specTarget.copy(targetColor).lerp(WHITE, 0.88);
+    }
     faceMat.current?.sheenColor.lerp(sheenTarget, k);
+    faceMat.current?.specularColor.lerp(specTarget, k);
+
+    const shader = faceShader.current;
+    if (shader) {
+      shader.uniforms.uRampMix.value = isDefault ? 0 : 1;
+      if (!isDefault) ramp.update(targetColor.r, targetColor.g, targetColor.b);
+    }
   });
 
   return (
@@ -442,7 +474,13 @@ export function VinylDisc({
           specularColor="#fff4f6"
         />
       </mesh>
-      {/* Grooved face — milky translucent PVC with concentric groove sheen. */}
+      {/* Grooved face — milky translucent PVC with concentric groove sheen.
+          "默认" mode uses the original pink-baked albedo with a white color
+          (the earliest look, verbatim); custom modes keep the grayscale map
+          and dye it in-shader through the tint ramp: the original pink
+          bake's radial chroma profile rebuilt in the chosen hue, with the
+          groove silver lifted back on top. Normals/roughness keep the PBR
+          vinyl feel either way. */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.0065, 0]}
@@ -451,8 +489,31 @@ export function VinylDisc({
       >
         <meshPhysicalMaterial
           ref={faceMat}
-          color={initialTint}
-          map={grooves.map}
+          color="#ffffff"
+          map={discMode === "default" ? grooves.legacyMap : grooves.map}
+          onBeforeCompile={(shader) => {
+            shader.uniforms.uTintRamp = { value: ramp.tex };
+            shader.uniforms.uRampMix = { value: 0 };
+            faceShader.current = shader;
+            shader.fragmentShader =
+              "uniform sampler2D uTintRamp;\nuniform float uRampMix;\n" +
+              shader.fragmentShader.replace(
+                "#include <map_fragment>",
+                `#include <map_fragment>
+                {
+                  float f = clamp(length(vMapUv - 0.5) * 2.0, 0.0, 1.0);
+                  vec4 rampPx = texture2D(uTintRamp, vec2(f, 0.5));
+                  float gray = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+                  float delta = max(gray - rampPx.a, 0.0);
+                  diffuseColor.rgb = mix(
+                    diffuseColor.rgb,
+                    rampPx.rgb + delta * vec3(1.0, 0.93, 0.97),
+                    uRampMix
+                  );
+                }`
+              );
+          }}
+          customProgramCacheKey={() => "yoin-vinyl-face"}
           normalMap={grooves.normalMap}
           normalScale={GROOVE_NORMAL_SCALE}
           roughnessMap={grooves.roughnessMap}
@@ -469,7 +530,7 @@ export function VinylDisc({
           iridescenceIOR={1.3}
           iridescenceThicknessRange={[100, 400]}
           sheen={0.18}
-          sheenColor={initialTint}
+          sheenColor="#ffffff"
           sheenRoughness={0.4}
           specularIntensity={1.2}
           specularColor="#fffafb"
