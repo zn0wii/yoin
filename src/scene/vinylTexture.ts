@@ -15,19 +15,25 @@ export type VinylGrooveMaps = {
   roughnessMap: THREE.DataTexture;
 };
 
-/** Opaque RGB pigment (t = 0 at label edge, 1 at rim). Disc translucency is
- *  applied via material.opacity so alpha blending stays reliable with
+/** Opaque grayscale luminance ramp (t = 0 at label edge, 1 at rim). The hue
+ *  lives in material.color (final albedo = map × color), so the disc can be
+ *  re-tinted per frame without regenerating this texture. Disc translucency
+ *  is applied via material.opacity so alpha blending stays reliable with
  *  MeshPhysicalMaterial + clearcoat. Tuned against assets/vinyl.png. */
 const VINYL_STOPS: { t: number; r: number; g: number; b: number }[] = [
-  { t: 0.0, r: 204, g: 118, b: 138 },
-  { t: 0.06, r: 220, g: 122, b: 142 },
-  { t: 0.22, r: 232, g: 136, b: 154 },
-  { t: 0.48, r: 236, g: 150, b: 164 },
-  { t: 0.75, r: 238, g: 168, b: 178 },
-  { t: 0.92, r: 240, g: 186, b: 194 },
-  { t: 0.98, r: 236, g: 178, b: 188 },
-  { t: 1.0, r: 220, g: 150, b: 164 },
+  { t: 0.0, r: 204, g: 204, b: 204 },
+  { t: 0.06, r: 220, g: 220, b: 220 },
+  { t: 0.22, r: 232, g: 232, b: 232 },
+  { t: 0.48, r: 236, g: 236, b: 236 },
+  { t: 0.75, r: 238, g: 238, b: 238 },
+  { t: 0.92, r: 240, g: 240, b: 240 },
+  { t: 0.98, r: 236, g: 236, b: 236 },
+  { t: 1.0, r: 220, g: 220, b: 220 },
 ];
+
+/** Stock rose-quartz tint — multiplies the grayscale albedo back to the
+ *  original pink (calibrated at the mid-groove stop, 236 × #ffa2b1 ≈ pink). */
+export const DEFAULT_DISC_TINT = "#ffa2b1";
 
 function lerpStops(t: number): { r: number; g: number; b: number } {
   const x = Math.min(1, Math.max(0, t));
@@ -76,9 +82,9 @@ function toDataTexture(
 }
 
 /**
- * PBR pack for the grooved PVC: milky pink albedo (with alpha), concentric
- * groove normals, roughness, and a circular anisotropy direction field.
- * Generated once — independent of the center label.
+ * PBR pack for the grooved PVC: grayscale milky albedo (with alpha — tint
+ * via material.color), concentric groove normals, roughness, and a circular
+ * anisotropy direction field. Generated once — independent of the center label.
  */
 export function makeVinylGrooveMaps(): VinylGrooveMaps {
   const size = GROOVE_SIZE;
@@ -153,14 +159,15 @@ export function makeVinylGrooveMaps(): VinylGrooveMaps {
       const hp = hPrime[ri] + (hPrime[ri + 1] - hPrime[ri]) * frac;
 
       // Very soft land/valley albedo — the silvery band mostly comes from
-      // normals + anisotropy, not painted dark rings.
+      // normals + anisotropy, not painted dark rings. Grayscale only: the
+      // hue is applied by material.color at draw time.
       const wave = grooveWave(r, period);
       const inGroove = r >= labelPx && r <= discPx ? 1 : 0;
       const lift = wave * 12 * inGroove;
       const silver = Math.max(0, wave) * 20 * inGroove;
       const rC = Math.min(255, Math.max(0, col.r + lift + silver));
-      const gC = Math.min(255, Math.max(0, col.g + lift * 0.75 + silver));
-      const bC = Math.min(255, Math.max(0, col.b + lift * 0.8 + silver * 0.95));
+      const gC = rC;
+      const bC = rC;
       const aa = r > discPx ? Math.max(0, 1 - (r - discPx)) : 1;
 
       albedo[i] = rC;
@@ -612,18 +619,19 @@ export function makeVinylLabelTexture(
   return toCanvasTexture(canvas);
 }
 
-/** Soft radial pink glow for the backlit platter center. */
+/** Soft radial white glow for the backlit platter center — tinted at draw
+ *  time by the mesh material's color (final = map × color). */
 export function makeGlowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 512;
   const ctx = canvas.getContext("2d")!;
   const g = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
-  g.addColorStop(0, "rgba(255,196,206,0.95)");
-  g.addColorStop(0.16, "rgba(255,120,146,0.8)");
-  g.addColorStop(0.45, "rgba(235,82,118,0.34)");
-  g.addColorStop(0.85, "rgba(255,96,136,0.18)");
-  g.addColorStop(1, "rgba(255,96,136,0)");
+  g.addColorStop(0, "rgba(255,255,255,0.95)");
+  g.addColorStop(0.16, "rgba(255,255,255,0.8)");
+  g.addColorStop(0.45, "rgba(255,255,255,0.34)");
+  g.addColorStop(0.85, "rgba(255,255,255,0.18)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 512, 512);
   return toCanvasTexture(canvas);

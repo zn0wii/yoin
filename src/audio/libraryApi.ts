@@ -31,3 +31,15 @@ export async function pickMusicFolder(): Promise<string | null> {
   if (!selected || Array.isArray(selected)) return null;
   return selected;
 }
+
+/**
+ * Absolute path of the bundled default music directory (shown by the library
+ * manager). Returns null in plain-browser dev where no Tauri backend exists.
+ */
+export async function getDefaultMusicDir(): Promise<string | null> {
+  try {
+    return await invoke<string>("get_default_music_dir");
+  } catch {
+    return null;
+  }
+}

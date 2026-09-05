@@ -1,0 +1,255 @@
+/* Library switcher — segmented pills + searchable dropdown at the top of
+   the album shelf. Pill styling mirrors .library-nav-item active states. */
+.lib-switcher {
+  position: relative;
+  pointer-events: auto;
+  margin: 0 10px 12px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.lib-seg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 14, 12, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px) saturate(1.08);
+  -webkit-backdrop-filter: blur(8px) saturate(1.08);
+}
+
+.lib-seg-item {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(247, 241, 234, 0.66);
+  font-size: 12.5px;
+  font-weight: 560;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.lib-seg-item:hover {
+  color: #f7f1ea;
+}
+
+.lib-seg-item.active {
+  color: #f7f1ea;
+  background: rgba(240, 168, 176, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.lib-seg-more,
+.lib-seg-manage {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(247, 241, 234, 0.66);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.lib-seg-more svg {
+  width: 12px;
+  height: 12px;
+}
+
+.lib-seg-manage svg {
+  width: 15px;
+  height: 15px;
+}
+
+.lib-seg-more:hover,
+.lib-seg-manage:hover {
+  color: #f7f1ea;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lib-seg-more[aria-expanded="true"] {
+  color: #f0a8b0;
+  background: rgba(240, 168, 176, 0.18);
+}
+
+/* --- Searchable dropdown ---------------------------------------------- */
+.lib-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-width: calc(100vw - 200px);
+  border-radius: 16px;
+  background: rgba(18, 14, 12, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  overflow: hidden;
+}
+
+.lib-dd-search {
+  margin: 10px 12px 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 14, 12, 0.32);
+  color: #f7f1ea;
+  font-size: 13px;
+  font-family: inherit;
+  flex: 0 0 auto;
+}
+
+.lib-dd-search::placeholder {
+  color: rgba(247, 241, 234, 0.4);
+}
+
+.lib-dd-search:focus {
+  outline: none;
+  border-color: rgba(240, 168, 176, 0.55);
+}
+
+.lib-dd-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 264px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0 8px 6px;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.lib-dd-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lib-dd-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+.lib-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(247, 241, 234, 0.85);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.lib-dd-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f7f1ea;
+}
+
+.lib-dd-item.active {
+  background: rgba(232, 176, 182, 0.12);
+  color: #f4c8cc;
+}
+
+.lib-dd-item-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(247, 241, 234, 0.22);
+}
+
+.lib-dd-item.active .lib-dd-item-dot {
+  background: #f0a8b0;
+  box-shadow: 0 0 5px rgba(240, 168, 176, 0.7);
+}
+
+.lib-dd-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.lib-dd-item-name {
+  font-weight: 580;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-dd-item-path {
+  font-size: 11px;
+  color: rgba(247, 241, 234, 0.42);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-dd-empty {
+  padding: 14px;
+  color: rgba(247, 241, 234, 0.45);
+  font-size: 12.5px;
+  text-align: center;
+  list-style: none;
+}
+
+.lib-dd-manage {
+  flex: 0 0 auto;
+  margin: 4px 12px 10px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: transparent;
+  color: rgba(247, 241, 234, 0.7);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.lib-dd-manage:hover {
+  color: #f7f1ea;
+  border-color: rgba(240, 168, 176, 0.5);
+}
+
+@media (max-width: 720px) {
+  .lib-switcher {
+    margin: 0 0 8px;
+  }
+
+  .lib-seg-item {
+    max-width: 96px;
+    padding: 5px 10px;
+  }
+
+  .lib-dropdown {
+    width: 260px;
+    max-width: calc(100vw - 40px);
+  }
+}

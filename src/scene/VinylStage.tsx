@@ -8,6 +8,7 @@ import {
   RECORD_Y,
   TonearmArm,
   TonearmMount,
+  useDiscTint,
   VinylDisc,
 } from "./Turntable";
 
@@ -104,8 +105,10 @@ function OverlayScene() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const albums = usePlayerStore((s) => s.albums);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
+  const discColorMode = usePlayerStore((s) => s.discColorMode);
   const album = albums[currentAlbumIndex];
   const active = currentAlbumIndex >= 0 && isPlaying;
+  const tint = useDiscTint(album?.cover ?? null);
 
   return (
     <group ref={group}>
@@ -117,6 +120,8 @@ function OverlayScene() {
         coverPath={album?.cover ?? null}
         title={album?.name ?? null}
         artist={album?.artist ?? null}
+        tint={tint}
+        pulse={discColorMode === "pulse"}
       />
       <TonearmMount pivot={armPivot} />
       <TonearmArm

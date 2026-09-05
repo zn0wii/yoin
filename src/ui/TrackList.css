@@ -49,12 +49,20 @@
   letter-spacing: 0.01em;
   color: #f7f1ea;
   line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .track-list-album-artist {
   font-size: 12px;
   font-weight: 450;
   color: rgba(247, 241, 234, 0.55);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .track-list-item {

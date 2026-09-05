@@ -6,7 +6,9 @@ import { usePlayerStore } from "../store/playerStore";
 import { audioEngine } from "../audio/audioEngine";
 import { toAssetUrl } from "../audio/assetUrl";
 import { albumStylusProgress } from "../audio/albumProgress";
+import { sheerHueHex, useVinylPalette } from "../ui/coverColor";
 import {
+  DEFAULT_DISC_TINT,
   LABEL_OF_DISC,
   loadImage,
   makeGlowTexture,
@@ -330,17 +332,45 @@ function useVinylLabel(
   return map;
 }
 
+/**
+ * Resolve the 3D record's tint from the store's disc-color mode:
+ * auto = the cover's sheer tone, manual = the picked hue, pulse = the stock
+ * base (hue travel happens per-frame inside VinylDisc). Falls back to the
+ * stock rose-quartz when there is no cover or extraction fails.
+ */
+export function useDiscTint(coverPath: string | null | undefined): string {
+  const mode = usePlayerStore((s) => s.discColorMode);
+  const manualHue = usePlayerStore((s) => s.manualDiscHue);
+  // Always called (stable hook order); cached after the first extraction.
+  const palette = useVinylPalette(coverPath ? toAssetUrl(coverPath) : null);
+
+  if (mode === "manual") return sheerHueHex(manualHue);
+  if (mode === "pulse") return DEFAULT_DISC_TINT;
+  return palette?.sheer ?? DEFAULT_DISC_TINT;
+}
+
+/** Pulse mode: one hue lap takes this long (seconds). */
+const PULSE_PERIOD = 12;
+/** Shared white for sheen/specular mixes. */
+const WHITE = new THREE.Color("#ffffff");
+
 export function VinylDisc({
   playing,
   coverPath,
   title,
   artist,
+  tint = DEFAULT_DISC_TINT,
+  pulse = false,
 }: {
   playing: boolean;
   coverPath: string | null | undefined;
   /** Album (folder) name printed on the label when there is no cover. */
   title?: string | null;
   artist?: string | null;
+  /** PVC tint — multiplies the grayscale groove albedo (map × color). */
+  tint?: string;
+  /** Music-pulse mode: the hue travels while playing, ignoring `tint`. */
+  pulse?: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
   // Depend on the factory so HMR of vinylTexture.ts rebuilds the PBR pack.
@@ -351,20 +381,58 @@ export function VinylDisc({
   );
   const labelMap = useVinylLabel(coverPath, title, artist);
 
+  // Tint transition. JSX binds only the mount-time color so r3f never sets
+  // it directly; afterwards the materials are driven by the per-frame lerp
+  // (a JSX re-bind would jump instantly instead of fading).
+  const initialTint = useRef(tint).current;
+  const edgeMat = useRef<THREE.MeshPhysicalMaterial>(null);
+  const faceMat = useRef<THREE.MeshPhysicalMaterial>(null);
+  const targetColor = useMemo(() => new THREE.Color(tint), []);
+  const sheenTarget = useMemo(() => new THREE.Color(), []);
+  // Pulse state: current hue phase (0–1) + smoothed audio amplitude.
+  const pulseHue = useRef(Math.random());
+  const pulseLevel = useRef(0);
+
   useFrame((_, dt) => {
     if (!group.current || !playing) return;
     // Clockwise when viewed from above (negative Y is CW in right-hand coords).
     group.current.rotation.y -= RAD_PER_SEC * dt;
   });
 
+  useFrame((_, dt) => {
+    if (pulse) {
+      if (playing) pulseHue.current = (pulseHue.current + dt / PULSE_PERIOD) % 1;
+      const amp = playing ? audioEngine.getAmplitude() : 0;
+      pulseLevel.current = THREE.MathUtils.lerp(
+        pulseLevel.current,
+        amp,
+        1 - Math.exp(-6 * dt)
+      );
+      targetColor.setHSL(
+        pulseHue.current,
+        0.64,
+        0.62 + pulseLevel.current * 0.14
+      );
+    } else {
+      targetColor.set(tint);
+    }
+    const k = 1 - Math.exp(-4 * dt);
+    edgeMat.current?.color.lerp(targetColor, k);
+    faceMat.current?.color.lerp(targetColor, k);
+    // Sheen stays a whiter version of the tint so highlights read as light.
+    sheenTarget.copy(targetColor).lerp(WHITE, 0.8);
+    faceMat.current?.sheenColor.lerp(sheenTarget, k);
+  });
+
   return (
     <group ref={group} position={[0, RECORD_Y, 0]}>
-      {/* Translucent PVC edge — pale rose-quartz, openEnded so it doesn't
-          z-fight with the label/groove planes stacked just above it. */}
+      {/* Translucent PVC edge, tinted to the disc color — openEnded so it
+          doesn't z-fight with the label/groove planes stacked just above it. */}
       <mesh castShadow receiveShadow>
         <cylinderGeometry args={[RECORD_R, RECORD_R, 0.013, 128, 1, true]} />
         <meshPhysicalMaterial
-          color="#e8a0b0"
+          ref={edgeMat}
+          color={initialTint}
           roughness={0.22}
           metalness={0}
           transparent
@@ -382,6 +450,8 @@ export function VinylDisc({
         geometry={grooveGeo}
       >
         <meshPhysicalMaterial
+          ref={faceMat}
+          color={initialTint}
           map={grooves.map}
           normalMap={grooves.normalMap}
           normalScale={GROOVE_NORMAL_SCALE}
@@ -399,7 +469,7 @@ export function VinylDisc({
           iridescenceIOR={1.3}
           iridescenceThicknessRange={[100, 400]}
           sheen={0.18}
-          sheenColor="#ffe8ee"
+          sheenColor={initialTint}
           sheenRoughness={0.4}
           specularIntensity={1.2}
           specularColor="#fffafb"
@@ -430,20 +500,32 @@ export function VinylDisc({
 }
 
 /**
- * Backlit platter center: an additive pink glow disc under the record plus a
- * matching accent light. Pulses with the music once the analyser has data.
+ * Backlit platter center: an additive glow disc under the record plus a
+ * matching accent light. Tinted to the disc color; pulses with the music
+ * once the analyser has data.
  */
-function CenterGlow({ playing }: { playing: boolean }) {
+function CenterGlow({ playing, tint = DEFAULT_DISC_TINT }: { playing: boolean; tint?: string }) {
   const mat = useRef<THREE.MeshBasicMaterial>(null);
   const light = useRef<THREE.PointLight>(null);
   const level = useRef(0.22);
   const map = useMemo(() => makeGlowTexture(), []);
+  // Bind the mount-time color in JSX; driven by the lerp afterwards.
+  const initialTint = useRef(tint).current;
+  const target = useMemo(() => new THREE.Color(tint), []);
 
   useFrame((_, dt) => {
-    const target = playing ? 0.45 + audioEngine.getAmplitude() * 0.5 : 0.22;
-    level.current = THREE.MathUtils.lerp(level.current, target, 1 - Math.exp(-6 * dt));
-    if (mat.current) mat.current.opacity = level.current;
-    if (light.current) light.current.intensity = level.current * 0.5;
+    const targetLevel = playing ? 0.45 + audioEngine.getAmplitude() * 0.5 : 0.22;
+    level.current = THREE.MathUtils.lerp(level.current, targetLevel, 1 - Math.exp(-6 * dt));
+    target.set(tint);
+    const k = 1 - Math.exp(-4 * dt);
+    if (mat.current) {
+      mat.current.opacity = level.current;
+      mat.current.color.lerp(target, k);
+    }
+    if (light.current) {
+      light.current.intensity = level.current * 0.5;
+      light.current.color.lerp(target, k);
+    }
   });
 
   return (
@@ -453,6 +535,7 @@ function CenterGlow({ playing }: { playing: boolean }) {
         <meshBasicMaterial
           ref={mat}
           map={map}
+          color={initialTint}
           transparent
           opacity={0.22}
           blending={THREE.AdditiveBlending}
@@ -462,7 +545,7 @@ function CenterGlow({ playing }: { playing: boolean }) {
       <pointLight
         ref={light}
         position={[0, 0.28, 0]}
-        color="#ff6d8a"
+        color={initialTint}
         intensity={0.3}
         distance={3}
         decay={2}
@@ -831,22 +914,26 @@ export function Turntable() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const albums = usePlayerStore((s) => s.albums);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
+  const discColorMode = usePlayerStore((s) => s.discColorMode);
   const hasTrack = currentAlbumIndex >= 0;
   const album = albums[currentAlbumIndex];
   const active = hasTrack && isPlaying;
   const coverPath = album?.cover ?? null;
+  const tint = useDiscTint(coverPath);
 
   return (
     <group>
       <Desk />
       <Plinth />
       <Platter />
-      <CenterGlow playing={active} />
+      <CenterGlow playing={active} tint={tint} />
       <VinylDisc
         playing={active}
         coverPath={coverPath}
         title={album?.name ?? null}
         artist={album?.artist ?? null}
+        tint={tint}
+        pulse={discColorMode === "pulse"}
       />
       <Tonearm />
     </group>

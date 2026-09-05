@@ -3,7 +3,7 @@
   z-index: 2;
   left: 176px;
   right: 300px;
-  top: 48px;
+  top: 20px;
   height: auto;
   pointer-events: none;
 }
@@ -185,6 +185,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Library collapsed: the playing album hangs at the top of the window
+   (the band the shelf occupied) so it never covers the turntable below. */
+.now-playing-art {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20px;
+  box-sizing: border-box;
+  pointer-events: none;
+  animation: now-playing-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.now-playing-art .album-art {
+  max-width: 296px;
+}
+
+.now-playing-art .album-cover-name {
+  font-size: 23px;
+}
+
+@keyframes now-playing-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @media (max-width: 1100px) {

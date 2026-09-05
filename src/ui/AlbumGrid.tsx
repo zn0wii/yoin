@@ -2,11 +2,12 @@ import { useRef, useState, type CSSProperties, type WheelEvent } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { toAssetUrl } from "../audio/assetUrl";
 import { useVinylPalette } from "./coverColor";
+import { LibrarySwitcher } from "./LibrarySwitcher";
 
 const PAGE = 8;
 
 /** Disc behind the jacket, tinted from the cover's dominant color. */
-function AlbumVinyl({ cover }: { cover?: string | null }) {
+export function AlbumVinyl({ cover }: { cover?: string | null }) {
   const palette = useVinylPalette(cover ? toAssetUrl(cover) : null);
   const style = (
     palette
@@ -85,9 +86,10 @@ export function AlbumGrid() {
 
   return (
     <div className="album-shelf-wrap">
+      <LibrarySwitcher />
       {albums.length === 0 ? (
         <div className="album-shelf-empty">
-          {error ?? "内置曲库为空。可用左侧「添加文件夹」选择 root / 艺术家 / 专辑。"}
+          {error ?? "此库为空。可在「库管理」中切换库，或添加 root / 艺术家 / 专辑 结构的文件夹。"}
         </div>
       ) : (
         <>

@@ -1,12 +1,14 @@
 import { useCallback, useEffect } from "react";
 import { usePlayerStore } from "./store/playerStore";
 import { useAudioSync } from "./audio/useAudioSync";
-import { scanLibrary, pickMusicFolder } from "./audio/libraryApi";
+import { getDefaultMusicDir, scanLibrary } from "./audio/libraryApi";
 import { LibraryNav } from "./ui/LibraryNav";
 import { AlbumGrid } from "./ui/AlbumGrid";
+import { NowPlayingArt } from "./ui/NowPlayingArt";
 import { SearchPanel } from "./ui/SearchPanel";
 import { TrackList } from "./ui/TrackList";
 import { ControlPanel } from "./ui/ControlPanel";
+import { LibraryManager } from "./ui/LibraryManager";
 import { VinylStage } from "./scene/VinylStage";
 import "./ui/LibraryNav.css";
 import "./ui/AlbumGrid.css";
@@ -16,46 +18,81 @@ import "./ui/ControlPanel.css";
 import "./App.css";
 
 function App() {
-  const setAlbums = usePlayerStore((s) => s.setAlbums);
+  const replaceAlbums = usePlayerStore((s) => s.replaceAlbumsKeepPlayback);
   const setLoading = usePlayerStore((s) => s.setLoading);
   const setError = usePlayerStore((s) => s.setError);
+  const setDefaultMusicDir = usePlayerStore((s) => s.setDefaultMusicDir);
   const libraryOpen = usePlayerStore((s) => s.libraryOpen);
   const searchOpen = usePlayerStore((s) => s.searchOpen);
-  const musicDir = usePlayerStore((s) => s.musicDir);
+  const libraryManagerOpen = usePlayerStore((s) => s.libraryManagerOpen);
+  const activeLibraryId = usePlayerStore((s) => s.activeLibraryId);
   const browseAlbumIndex = usePlayerStore((s) => s.browseAlbumIndex);
   const currentAlbumIndex = usePlayerStore((s) => s.currentAlbumIndex);
 
   useAudioSync();
 
-  const loadLibrary = useCallback(
-    async (dir?: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const albums = await scanLibrary(dir);
-        setAlbums(albums, dir ?? null);
+  // Resolve the bundled default music dir once, for display in the manager
+  // (null in plain-browser dev — the demo library fallback kicks in there).
+  useEffect(() => {
+    void getDefaultMusicDir().then(setDefaultMusicDir);
+  }, [setDefaultMusicDir]);
+
+  // Scan the active library whenever it changes (startup included).
+  // The playing album is carried over by replaceAlbumsKeepPlayback, so a
+  // library switch never interrupts playback or hides the track panel.
+  useEffect(() => {
+    const lib = usePlayerStore
+      .getState()
+      .libraries.find((l) => l.id === activeLibraryId);
+    if (!lib) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    scanLibrary(lib.path ?? undefined)
+      .then((albums) => {
+        if (cancelled) return;
+        replaceAlbums(albums, lib.path);
         if (albums.length === 0) {
-          setError("未找到专辑。请选择 root / 艺术家 / 专辑 文件夹。");
+          setError("此库为空。可在「库管理」中切换库，或添加 root / 艺术家 / 专辑 结构的文件夹。");
         }
-      } catch (err) {
-        setError(String(err));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLibraryId, replaceAlbums, setLoading, setError]);
+
+  /** Rescan one library: applies the result when it is the active one,
+   *  otherwise just validates the path (errors bubble to the manager). */
+  const refreshLibrary = useCallback(
+    async (id: string) => {
+      const lib = usePlayerStore.getState().libraries.find((l) => l.id === id);
+      if (!lib) return;
+      const apply = usePlayerStore.getState().activeLibraryId === id;
+      if (apply) setLoading(true);
+      try {
+        const albums = await scanLibrary(lib.path ?? undefined);
+        if (apply) {
+          replaceAlbums(albums, lib.path);
+          setError(albums.length === 0 ? "此库为空。" : null);
+        }
       } finally {
-        setLoading(false);
+        if (apply) setLoading(false);
       }
     },
-    [setAlbums, setLoading, setError]
+    [replaceAlbums, setLoading, setError]
   );
 
-  useEffect(() => {
-    loadLibrary();
-  }, [loadLibrary]);
-
-  const handlePickFolder = useCallback(async () => {
-    const dir = await pickMusicFolder();
-    if (dir) {
-      await loadLibrary(dir);
-    }
-  }, [loadLibrary]);
+  // SearchPanel downloads land in the active library's tree — rescan it.
+  const refreshActiveLibrary = useCallback(
+    () => refreshLibrary(usePlayerStore.getState().activeLibraryId),
+    [refreshLibrary]
+  );
 
   const showTracks = browseAlbumIndex >= 0 || currentAlbumIndex >= 0;
 
@@ -64,17 +101,19 @@ function App() {
       <main className="app-main">
         <VinylStage />
       </main>
-      <LibraryNav onPickFolder={handlePickFolder} />
+      <LibraryNav />
       {libraryOpen && !searchOpen ? <AlbumGrid /> : null}
-      {searchOpen ? (
-        <SearchPanel onDownloaded={() => loadLibrary(musicDir ?? undefined)} />
-      ) : null}
+      {!libraryOpen && !searchOpen ? <NowPlayingArt /> : null}
+      {searchOpen ? <SearchPanel onDownloaded={refreshActiveLibrary} /> : null}
       {showTracks ? (
         <aside className="app-sidebar">
           <TrackList />
         </aside>
       ) : null}
-      <ControlPanel onPickFolder={handlePickFolder} />
+      <ControlPanel />
+      {libraryManagerOpen ? (
+        <LibraryManager onRefresh={refreshLibrary} />
+      ) : null}
     </div>
   );
 }

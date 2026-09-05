@@ -1,0 +1,327 @@
+/* Library manager — centered glass modal, tokens shared with SearchPanel. */
+.lib-manager-overlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(10, 7, 6, 0.35);
+}
+
+.lib-manager {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(560px, 100%);
+  min-height: 0;
+  border-radius: 20px;
+  background: rgba(18, 14, 12, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  color: #f7f1ea;
+}
+
+.lib-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 10px 20px;
+  font-size: 14px;
+  font-weight: 620;
+  flex: 0 0 auto;
+}
+
+.lib-manager-close {
+  border: none;
+  background: transparent;
+  color: rgba(247, 241, 234, 0.55);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.lib-manager-close:hover {
+  color: #f7f1ea;
+}
+
+.lib-manager-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 4px 14px 8px;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.lib-manager-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lib-manager-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+/* --- One library row ------------------------------------------------- */
+.lib-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.lib-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.lib-row.active {
+  background: rgba(232, 176, 182, 0.1);
+  border-color: rgba(240, 168, 176, 0.25);
+}
+
+.lib-row-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(247, 241, 234, 0.25);
+}
+
+.lib-row.active .lib-row-dot {
+  background: #f0a8b0;
+  box-shadow: 0 0 6px rgba(240, 168, 176, 0.7);
+}
+
+.lib-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lib-row-name {
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  color: #f7f1ea;
+  font-size: 14px;
+  font-weight: 580;
+  font-family: inherit;
+  cursor: text;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-row-name:hover {
+  color: #fff;
+  text-decoration: underline dotted rgba(247, 241, 234, 0.4);
+}
+
+.lib-row-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(240, 168, 176, 0.55);
+  background: rgba(18, 14, 12, 0.5);
+  color: #f7f1ea;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.lib-row-name-input:focus {
+  outline: none;
+}
+
+.lib-row-path {
+  font-size: 12px;
+  color: rgba(247, 241, 234, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* long paths keep their tail (drive letter) visible */
+  text-align: left;
+}
+
+.lib-row-error {
+  font-size: 12px;
+  color: #f4a0a8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lib-row-tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #f0a8b0;
+  min-width: 34px;
+  text-align: right;
+}
+
+.lib-row-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: rgba(247, 241, 234, 0.7);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.lib-row-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.lib-row-btn:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lib-row-btn.danger:hover:not(:disabled) {
+  color: #f4a0a8;
+}
+
+.lib-row-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.lib-row-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(240, 168, 176, 0.3);
+  border-top-color: #f0a8b0;
+  animation: lib-spin 0.8s linear infinite;
+}
+
+@keyframes lib-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Add form --------------------------------------------------------- */
+.lib-manager-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 0 0 auto;
+}
+
+.lib-manager-name-input {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 14, 12, 0.32);
+  color: #f7f1ea;
+  font-size: 13.5px;
+  font-family: inherit;
+}
+
+.lib-manager-name-input::placeholder {
+  color: rgba(247, 241, 234, 0.4);
+}
+
+.lib-manager-name-input:focus {
+  outline: none;
+  border-color: rgba(240, 168, 176, 0.55);
+}
+
+.lib-manager-pick,
+.lib-manager-add-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 14, 12, 0.32);
+  color: rgba(247, 241, 234, 0.85);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.lib-manager-pick svg {
+  width: 15px;
+  height: 15px;
+}
+
+.lib-manager-pick:hover:not(:disabled),
+.lib-manager-add-btn:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.lib-manager-add-btn {
+  border: none;
+  background: rgba(240, 168, 176, 0.85);
+  color: #2a1512;
+  font-weight: 620;
+}
+
+.lib-manager-add-btn:disabled,
+.lib-manager-pick:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lib-manager-path {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: rgba(247, 241, 234, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .lib-manager-overlay {
+    padding: 12px;
+  }
+
+  .lib-manager {
+    max-height: calc(100vh - 120px);
+  }
+
+  .lib-row-tag {
+    display: none;
+  }
+}

@@ -56,9 +56,13 @@ export function TrackList() {
     <div className="track-list">
       <div className="track-list-album">
         <div className="track-list-album-header">
-          <div className="track-list-album-name">{album.name}</div>
+          <div className="track-list-album-name" title={album.name}>
+            {album.name}
+          </div>
           {album.artist ? (
-            <div className="track-list-album-artist">{album.artist}</div>
+            <div className="track-list-album-artist" title={album.artist}>
+              {album.artist}
+            </div>
           ) : null}
         </div>
         {album.tracks.map((track, trackIndex) => {
@@ -84,7 +88,9 @@ export function TrackList() {
                   String(trackIndex + 1).padStart(2, " ")
                 )}
               </span>
-              <span className="track-list-item-title">{track.title}</span>
+              <span className="track-list-item-title" title={track.title}>
+                {track.title}
+              </span>
               {dur ? <span className="track-list-item-time">{dur}</span> : null}
             </button>
           );

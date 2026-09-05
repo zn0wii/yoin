@@ -24,7 +24,6 @@ export function useAudioSync() {
   const setTime = usePlayerStore((s) => s.setTime);
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
   const setTrackDuration = usePlayerStore((s) => s.setTrackDuration);
-  const nextTrack = usePlayerStore((s) => s.nextTrack);
 
   const loadedPathRef = useRef<string | null>(null);
   const hasSelection = currentAlbumIndex !== -1;
@@ -146,7 +145,8 @@ export function useAudioSync() {
 
   // Advance to the next track when the current one finishes. Online tracks
   // without a cached `path` still advance if they have `onlineSongId` — the
-  // load effect above fetches a fresh CDN url before playing.
+  // load effect above fetches a fresh CDN url before playing. Shuffle and
+  // repeat (transport toggles) steer the auto-advance.
   useEffect(() => {
     return audioEngine.onEnded(() => {
       const s = usePlayerStore.getState();
@@ -155,19 +155,39 @@ export function useAudioSync() {
         setIsPlaying(false);
         return;
       }
-      const nextIndex = (s.currentTrackIndex + 1) % album.tracks.length;
-      // Stop at end of online albums instead of looping into track 0, so
-      // "play whole album" means play through once.
-      if (album.onlineId && nextIndex === 0) {
-        setIsPlaying(false);
+      // Repeat-one: indices don't change so the load effect won't refire —
+      // restart the audio element directly.
+      if (s.repeatMode === "one") {
+        audioEngine.seek(0);
+        audioEngine.play().catch(() => setIsPlaying(false));
+        setTime(0, audioEngine.duration);
         return;
+      }
+      let nextIndex: number;
+      if (s.shuffle && album.tracks.length > 1) {
+        // Random pick that isn't the track that just ended.
+        do {
+          nextIndex = Math.floor(Math.random() * album.tracks.length);
+        } while (nextIndex === s.currentTrackIndex);
+      } else {
+        nextIndex = s.currentTrackIndex + 1;
+        if (nextIndex >= album.tracks.length) {
+          // Reached the album end: loop on repeat-all, otherwise stop. Online
+          // albums always play through once unless repeat-all is explicit.
+          const loops = album.onlineId ? s.repeatMode === "all" : s.repeatMode !== "off";
+          if (!loops) {
+            setIsPlaying(false);
+            return;
+          }
+          nextIndex = 0;
+        }
       }
       const next = album.tracks[nextIndex];
       if (!next?.path && !next?.onlineSongId) {
         setIsPlaying(false);
         return;
       }
-      nextTrack();
+      usePlayerStore.setState({ currentTrackIndex: nextIndex, currentTime: 0 });
     });
-  }, [nextTrack, setIsPlaying]);
+  }, [setIsPlaying, setTime]);
 }

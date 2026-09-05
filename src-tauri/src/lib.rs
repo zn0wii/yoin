@@ -416,6 +416,14 @@ fn scan_library<R: Runtime>(
     Ok(albums)
 }
 
+/// Absolute path of the default (bundled) music directory, shown by the
+/// frontend library manager for the built-in library entry.
+#[tauri::command]
+fn get_default_music_dir<R: Runtime>(app: tauri::AppHandle<R>) -> Result<String, String> {
+    default_music_dir(&app)
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -424,6 +432,7 @@ pub fn run() {
         .manage(netease_client::NeteaseSession::new())
         .invoke_handler(tauri::generate_handler![
             scan_library,
+            get_default_music_dir,
             netease_client::search_netease_music,
             netease_client::get_netease_album_detail,
             netease_client::get_netease_song_url,

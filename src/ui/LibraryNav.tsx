@@ -9,14 +9,21 @@ function IconVinyl() {
   );
 }
 
-function IconFolder() {
+function IconLibrary() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden>
       <path
-        d="M3 5.2h4.2l1.3 1.6H17v8.6H3z"
+        d="M3 4.4h2.8v11.2H3zM6.8 4.4h2.8v11.2H6.8z"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.8 5.4l2.6-.7 2.9 10.9-2.6.7z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
     </svg>
@@ -58,16 +65,12 @@ function IconImage() {
   );
 }
 
-export function LibraryNav({
-  onPickFolder,
-}: {
-  onPickFolder: () => void;
-}) {
+export function LibraryNav() {
   const libraryOpen = usePlayerStore((s) => s.libraryOpen);
   const toggleLibrary = usePlayerStore((s) => s.toggleLibrary);
   const searchOpen = usePlayerStore((s) => s.searchOpen);
   const toggleSearch = usePlayerStore((s) => s.toggleSearch);
-  const isLoading = usePlayerStore((s) => s.isLoading);
+  const toggleLibraryManager = usePlayerStore((s) => s.toggleLibraryManager);
   const backgroundIndex = usePlayerStore((s) => s.backgroundIndex);
   const cycleBackground = usePlayerStore((s) => s.cycleBackground);
 
@@ -101,12 +104,11 @@ export function LibraryNav({
       </button>
       <button
         className="library-nav-item"
-        onClick={onPickFolder}
-        disabled={isLoading}
-        title="选择音乐文件夹（root / 艺术家 / 专辑）"
+        onClick={toggleLibraryManager}
+        title="库管理：重命名 / 刷新 / 删除 / 添加曲库"
       >
-        <IconFolder />
-        <span>{isLoading ? "扫描中…" : "添加文件夹"}</span>
+        <IconLibrary />
+        <span>库管理</span>
       </button>
     </nav>
   );

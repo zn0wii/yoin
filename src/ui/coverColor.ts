@@ -18,6 +18,8 @@ export interface VinylPalette {
   body: string;
   /** Brighter paper-label tone. */
   label: string;
+  /** Bright translucent-PVC tone for the large 3D record. */
+  sheer: string;
 }
 
 /* --- pixel access --------------------------------------------------------- */
@@ -188,7 +190,18 @@ export function vinylPaletteFrom(rgb: Rgb): VinylPalette {
   const bodyS = s < 0.12 ? s : clamp(s * 0.9, 0.28, 0.65);
   const body = hslToHex(h, bodyS, 0.24);
   const label = hslToHex(h, clamp(s, 0.3, 0.85), clamp(l, 0.46, 0.64));
-  return { body, label };
+  // Translucent colored pressing for the 3D record: same hue, lifted into
+  // the milky-bright range the groove highlights still read through. Deeper
+  // than the stock pink — short-wavelength hues (blue/green) need the extra
+  // chroma to stay visible under the stage's warm lights.
+  const sheerS = s < 0.12 ? 0.07 : clamp(s * 0.95, 0.5, 0.72);
+  const sheer = hslToHex(h, sheerS, clamp(l + 0.38, 0.66, 0.74));
+  return { body, label, sheer };
+}
+
+/** Translucent-PVC hex for a manual hue (0–360) — matches the sheer tone. */
+export function sheerHueHex(hue: number): string {
+  return hslToHex(hue, 0.64, 0.7);
 }
 
 /* --- public API ------------------------------------------------------------ */
