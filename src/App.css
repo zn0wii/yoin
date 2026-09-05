@@ -61,11 +61,12 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* No glass layer — text sits directly on the room photo, with a soft
-     shadow instead to keep it readable over busy backgrounds. */
+  /* No glass layer — text sits directly on the room photo, with a heavier
+     multi-layer shadow to keep it readable over busy backgrounds. */
   text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.5),
-    0 2px 10px rgba(0, 0, 0, 0.35);
+    0 1px 3px rgba(0, 0, 0, 0.75),
+    0 2px 8px rgba(0, 0, 0, 0.6),
+    0 6px 22px rgba(0, 0, 0, 0.5);
 }
 
 @media (max-width: 720px) {
