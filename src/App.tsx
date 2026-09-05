@@ -4,7 +4,7 @@ import { useAudioSync } from "./audio/useAudioSync";
 import { getDefaultMusicDir, scanLibrary } from "./audio/libraryApi";
 import { LibraryNav } from "./ui/LibraryNav";
 import { AlbumGrid } from "./ui/AlbumGrid";
-import { NowPlayingArt } from "./ui/NowPlayingArt";
+import { NowPlayingArt3D } from "./scene/NowPlayingArt3D";
 import { SearchPanel } from "./ui/SearchPanel";
 import { TrackList } from "./ui/TrackList";
 import { ControlPanel } from "./ui/ControlPanel";
@@ -103,7 +103,7 @@ function App() {
       </main>
       <LibraryNav />
       {libraryOpen && !searchOpen ? <AlbumGrid /> : null}
-      {!libraryOpen && !searchOpen ? <NowPlayingArt /> : null}
+      {!libraryOpen && !searchOpen ? <NowPlayingArt3D /> : null}
       {searchOpen ? <SearchPanel onDownloaded={refreshActiveLibrary} /> : null}
       {showTracks ? (
         <aside className="app-sidebar">

@@ -187,27 +187,29 @@
   white-space: nowrap;
 }
 
-/* Library collapsed: the playing album hangs at the top of the window
-   (the band the shelf occupied) so it never covers the turntable below. */
-.now-playing-art {
+/* Library collapsed: a solid 3D jacket + record floats at the top of the
+   window (scene/NowPlayingArt3D.tsx); dragging tilts the whole group. */
+.now-playing-3d {
   position: absolute;
-  inset: 0;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 480px;
+  height: 380px;
   z-index: 2;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 20px;
-  box-sizing: border-box;
-  pointer-events: none;
+  cursor: grab;
+  touch-action: none;
   animation: now-playing-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.now-playing-art .album-art {
-  max-width: 296px;
+.now-playing-3d.dragging {
+  cursor: grabbing;
 }
 
-.now-playing-art .album-cover-name {
-  font-size: 23px;
+.now-playing-3d canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 @keyframes now-playing-in {
@@ -307,6 +309,11 @@
 }
 
 @media (max-width: 720px) {
+  .now-playing-3d {
+    width: min(320px, 86vw);
+    height: 260px;
+  }
+
   .album-shelf-wrap {
     left: calc(var(--ui-inset, 12px) + var(--nav-w, 120px));
     right: var(--ui-inset, 12px);
