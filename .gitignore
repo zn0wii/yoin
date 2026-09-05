@@ -22,7 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-assets/
+assets/*
+!assets/1.png
+!assets/2.png
 music
 .DS_Store
 
